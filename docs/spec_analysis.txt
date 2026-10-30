@@ -1,0 +1,292 @@
+AXI4-Lite GPIO Specification and Requirement Analysis
+=====================================================
+
+Document status : Initial requirement-extraction baseline
+Verification baseline: docs/verification_plan.txt v1.0 (frozen)
+Primary RTL source   : dut/rtl/axilgpio.v
+
+Purpose
+-------
+This document records behavior already confirmed from axilgpio.v and the
+frozen verification plan. It is not a test plan, coverage model, or assertion
+catalog. No requirement below is inferred solely to make the verification
+environment more complete.
+
+Status definitions
+------------------
+CONFIRMED  Directly supported by the RTL and/or the frozen verification plan.
+ASSUMPTION Temporarily adopted interpretation requiring owner confirmation.
+OPEN       A decision or clarification is still required.
+CONFLICT   Available sources state incompatible behavior.
+
+
+AXI4-Lite interface and transaction semantics
+----------------------------------------------
+
+ID: REQ-AXI-001
+Requirement/Behavior:
+  The slave exposes the five AXI4-Lite channels: write address (AW), write
+  data (W), write response (B), read address (AR), and read data/response (R).
+Source/Basis:
+  axilgpio.v module ports, lines 108-134; verification_plan.txt Sections 4-5.
+Status: CONFIRMED
+Notes:
+  The implemented data width is 32 bits. AWPROT and ARPROT are present but are
+  not used by the functional logic.
+
+ID: REQ-AXI-002
+Requirement/Behavior:
+  A channel transfer occurs only when VALID and READY are both high. Once a
+  source asserts VALID, VALID and its payload remain stable until handshake.
+Source/Basis:
+  AXI4-Lite protocol rules captured in verification_plan.txt Sections 4 and
+  5.6; axilgpio.v implements each channel using VALID/READY handshakes.
+Status: CONFIRMED
+Notes:
+  AW/W/AR stability is a master/testbench obligation. B/R stability under
+  backpressure is a DUT slave obligation.
+
+ID: REQ-AXI-003
+Requirement/Behavior:
+  AW and W are independent channels and may arrive or handshake in the same
+  cycle, AW-first, or W-first. A logical write requires one accepted AW item
+  and one accepted W item.
+Source/Basis:
+  Independent AW and W ports and skid buffers in axilgpio.v, lines 112-124 and
+  191-229; verification_plan.txt Sections 4 and 5.2.
+Status: CONFIRMED
+Notes:
+  Verification must not assume same-cycle AW/W handshakes. In the
+  OPT_SKIDBUFFER=0 implementation, both READY signals are asserted together
+  only after both VALID signals are present; the master must still assert
+  VALID independently of READY.
+
+ID: REQ-AXI-004
+Requirement/Behavior:
+  AXI4-Lite has no transaction IDs. Accepted requests and their responses are
+  associated in protocol order. Multiple items may be issued by the master,
+  while the slave may limit acceptance through READY/backpressure.
+Source/Basis:
+  verification_plan.txt Section 4.1 (frozen outstanding and pipelining policy).
+Status: CONFIRMED
+Notes:
+  Verification bookkeeping pairs the oldest accepted AW with the oldest
+  accepted W, and matches read/write responses in order; it must not invent
+  out-of-order response matching.
+
+ID: REQ-AXI-005
+Requirement/Behavior:
+  WSTRB is a four-bit byte-enable mask. For every implemented writable
+  register, a set strobe updates the corresponding byte and a clear strobe
+  preserves it. WSTRB=0000 causes no state change.
+Source/Basis:
+  axilgpio.v apply_wstrb(), lines 507-519, and byte-qualified operations at
+  lines 327-371 and 430-448; verification_plan.txt Sections 6.1-6.5 and 7.3.
+Status: CONFIRMED
+Notes:
+  The write still completes with an OKAY response when WSTRB=0000.
+
+ID: REQ-AXI-006
+Requirement/Behavior:
+  BRESP and RRESP are always OKAY (2'b00); the implementation has no
+  SLVERR/DECERR response path.
+Source/Basis:
+  axilgpio.v lines 255-265 and 304-315; verification_plan.txt Section 3.
+Status: CONFIRMED
+Notes:
+  Unsupported or aliased addresses therefore do not produce an AXI error.
+
+ID: REQ-AXI-007
+Requirement/Behavior:
+  Address bits [1:0] are ignored for register selection, so unaligned byte
+  addresses alias the containing 32-bit word.
+Source/Basis:
+  axilgpio.v ADDRLSB/address slicing, lines 148 and 206-207/247/284/298;
+  verification_plan.txt Section 3.
+Status: CONFIRMED
+Notes:
+  This is current RTL behavior, not an error-response case.
+
+
+Register map and GPIO output behavior
+-------------------------------------
+
+ID: REQ-GPIO-001
+Requirement/Behavior:
+  With NIN>0, the 32-bit word register map is:
+
+    Address  Name     Access/behavior
+    0x00     LOAD     RW command alias; reads current output
+    0x04     SET      RW command alias; reads current output
+    0x08     CLEAR    RW command alias; reads current output
+    0x0C     TOGGLE   RW command alias; reads current output
+    0x10     INPUT    RO synchronized input
+    0x14     CHANGED  sticky hardware-set, software W1C
+    0x18     MASK     RW interrupt-control field
+    0x1C     INT      RO implemented active interrupt bits
+
+Source/Basis:
+  axilgpio.v register comments, lines 19-60, decode at lines 336-375 and
+  494-500; verification_plan.txt Section 3.
+Status: CONFIRMED
+Notes:
+  The MASK name does not resolve its polarity; see SPEC-MASK-001.
+
+ID: REQ-GPIO-002
+Requirement/Behavior:
+  A LOAD write replaces each strobed output byte with the matching WDATA byte;
+  unstrobed bytes retain their prior value.
+Source/Basis:
+  axilgpio.v lines 327 and 336-337 plus apply_wstrb(), lines 507-519;
+  verification_plan.txt Section 6.1.
+Status: CONFIRMED
+Notes:
+  Bits outside NOUT are forced to zero when NOUT<32.
+
+ID: REQ-GPIO-003
+Requirement/Behavior:
+  A SET write applies old_value OR WDATA to each strobed byte; unstrobed bytes
+  retain their prior value.
+Source/Basis:
+  axilgpio.v lines 338-348; verification_plan.txt Section 6.2.
+Status: CONFIRMED
+Notes:
+  A WDATA bit of 0 is a no-op; a bit of 1 sets the corresponding output bit.
+
+ID: REQ-GPIO-004
+Requirement/Behavior:
+  A CLEAR write applies old_value AND NOT WDATA to each strobed byte;
+  unstrobed bytes retain their prior value.
+Source/Basis:
+  axilgpio.v lines 350-360; verification_plan.txt Section 6.3.
+Status: CONFIRMED
+Notes:
+  A WDATA bit of 0 is a no-op; a bit of 1 clears the corresponding output bit.
+
+ID: REQ-GPIO-005
+Requirement/Behavior:
+  A TOGGLE write applies old_value XOR WDATA to each strobed byte; unstrobed
+  bytes retain their prior value.
+Source/Basis:
+  axilgpio.v lines 362-372; verification_plan.txt Section 6.4.
+Status: CONFIRMED
+Notes:
+  A WDATA bit of 0 is a no-op; a bit of 1 toggles the corresponding output bit.
+
+ID: REQ-GPIO-006
+Requirement/Behavior:
+  Reads of LOAD, SET, CLEAR, and TOGGLE all return the current output value.
+Source/Basis:
+  axilgpio.v read decode, lines 494-500; verification_plan.txt Section 3.
+Status: CONFIRMED
+Notes:
+  SET/CLEAR/TOGGLE are readable command aliases rather than independent
+  storage registers.
+
+ID: REQ-GPIO-007
+Requirement/Behavior:
+  INPUT returns the synchronized qq_gpio value. Bits [31:NIN] read as zero.
+Source/Basis:
+  axilgpio.v lines 451 and 494-499; verification_plan.txt Sections 3 and 7.1.
+Status: CONFIRMED
+Notes:
+  Writes to INPUT have no functional effect when NIN>0.
+
+ID: REQ-GPIO-008
+Requirement/Behavior:
+  CHANGED records any synchronized 0->1 or 1->0 input transition. Each bit is
+  sticky and remains set until reset or a legal W1C operation. Bits [31:NIN]
+  read as zero.
+Source/Basis:
+  axilgpio.v lines 421-437 and 452/497; verification_plan.txt Sections 7.2-7.3.
+Status: CONFIRMED
+Notes:
+  WDATA=1 plus the matching WSTRB byte clears a selected bit; WDATA=0 or a
+  clear byte strobe does not clear it. If a W1C clear and a newly detected
+  change target the same bit on the same clock edge, the later RTL assignment
+  makes the new change win and the bit remains set.
+
+
+Input synchronization, configuration, and interrupts
+----------------------------------------------------
+
+ID: REQ-CDC-001
+Requirement/Behavior:
+  When NIN>0, i_gpio passes through q_gpio and qq_gpio before qq_gpio is used
+  by functional logic. last_gpio is a comparison/history register, not a third
+  synchronizer stage for the value consumed by the DUT.
+Source/Basis:
+  axilgpio.v lines 394 and 410-419; verification_plan.txt Sections 2 and 7.1.
+Status: CONFIRMED
+Notes:
+  RTL simulation can check sampled-value convergence and latency, but cannot
+  prove metastability behavior. Pulses shorter than a clock period may be
+  missed by this level synchronizer.
+
+ID: REQ-INT-001
+Requirement/Behavior:
+  MASK is writable with byte enables and resets to zero. Unstrobed bytes are
+  preserved, and bits [31:NIN] read as zero.
+Source/Basis:
+  axilgpio.v lines 439-454; verification_plan.txt Sections 3 and 7.4.
+Status: CONFIRMED
+Notes:
+  The storage and WSTRB behavior are confirmed; the meaning of a stored 1 is
+  unresolved by SPEC-MASK-001.
+
+ID: REQ-INT-002
+Requirement/Behavior:
+  The implemented INT register value is r_mask & toggled. o_int is a registered
+  reduction OR of that expression and therefore reflects the prior cycle's
+  r_mask/toggled state.
+Source/Basis:
+  axilgpio.v lines 400-408 and 451-455; verification_plan.txt Sections 7.4-7.5.
+Status: CONFIRMED
+Notes:
+  Writes to INT have no functional effect when NIN>0. Whether r_mask should be
+  described as a mask or an enable remains unresolved by SPEC-MASK-001.
+
+ID: REQ-CFG-001
+Requirement/Behavior:
+  When NIN=0, o_int is permanently zero and the upper four word addresses
+  0x10-0x1C alias the lower output operations LOAD/SET/CLEAR/TOGGLE.
+Source/Basis:
+  axilgpio.v decode expression at lines 336 and 494 plus NO_INPUTS generate
+  block, lines 465-481; verification_plan.txt Sections 3 and 7.7.
+Status: CONFIRMED
+Notes:
+  i_gpio has no functional effect in this configuration.
+
+ID: REQ-RST-001
+Requirement/Behavior:
+  S_AXI_ARESETN is active low and sampled in S_AXI_ACLK processes for the
+  top-level functional state. Reset clears BVALID/RVALID, input pipeline and
+  change/interrupt state, and initializes implemented output bits to
+  DEFAULT_OUTPUT.
+Source/Basis:
+  axilgpio.v reset logic at lines 255-262, 304-311, 378-381, 403-418,
+  423-448; verification_plan.txt Sections 5.1 and 9.
+Status: CONFIRMED
+Notes:
+  This statement does not generalize the internal skidbuffer reset style.
+
+
+Open specification conflict
+---------------------------
+
+ID: SPEC-MASK-001
+Requirement/Behavior:
+  The intended polarity of MASK is unresolved. RTL comments say MASK=1
+  suppresses an interrupt, while implemented logic computes
+  int_toggled = r_mask & toggled and r_int <= |(r_mask & toggled), so MASK=1
+  behaves as an enable.
+Source/Basis:
+  axilgpio.v comments, lines 50-60, versus implemented logic at lines 400-408
+  and 451-455; verification_plan.txt Section 8.
+Status: CONFLICT
+Notes:
+  Keep expected behavior configurable and characterize both interpretations.
+  Do not claim specification sign-off until the design/spec owner records
+  whether the comments or the RTL are authoritative. No DUT change is implied
+  by this document.
+

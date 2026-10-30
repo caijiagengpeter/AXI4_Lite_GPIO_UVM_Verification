@@ -1,0 +1,9 @@
+Requirement_ID,Verification_Point,Test_ID,Assertion_ID,Coverage_ID,Status,Notes
+REQ-AXI-003,AW/W channels are independent and paired by accepted order,AXI-003|AXI-004|AXI-005,A01|A02|A06|A08,COV-AXI-001,PLANNED,Includes same-cycle AW-first and W-first cases
+REQ-AXI-005,WSTRB controls byte updates and preserves unstrobed bytes,OUT-005|IN-005|INT-005,F06|F10|F12,COV-AXI-002,PLANNED,Includes WSTRB=0000 no-state-change behavior
+REQ-GPIO-002,LOAD replaces only strobed output bytes,OUT-001|OUT-005,F02|F06,COV-GPIO-001,PLANNED,Reads use the shared output alias behavior
+REQ-GPIO-008,CHANGED is sticky and supports W1C with change winning,IN-002|IN-003|IN-004|IN-005|IN-006,F08|F09|F10|F11,COV-GPIO-002|COV-GPIO-003,PLANNED,Covers rise fall accumulation selective clear and same-cycle clear plus change
+REQ-INT-001|REQ-INT-002|SPEC-MASK-001,Characterize MASK polarity INT bits and registered o_int,INT-001|INT-002|INT-003|INT-004|INT-005,F12|F13|F14,COV-INT-001,OPEN,Polarity must be resolved before specification sign-off
+REQ-RST-001,Reset clears protocol and functional state and permits a clean first access,AXI-001|AXI-012|OUT-009,A11|F01,COV-RST-001,PLANNED,Use sampled top-level reset semantics
+REQ-AXI-004,Outstanding and pipelined requests retain ordered matching,AXI-008|AXI-009|AXI-015,A06|A07|A08|A09,COV-AXI-004,PLANNED,Scoreboard queues and counters are the primary loss duplication and ordering checks
+REQ-CFG-001,NIN=0 aliases upper addresses to output operations and disables interrupt,CFG-004,F15,COV-REG-001,PLANNED,Input and interrupt coverage is ignored for NIN=0

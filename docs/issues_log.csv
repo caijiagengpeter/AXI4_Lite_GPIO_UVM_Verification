@@ -1,0 +1,2 @@
+Issue_ID,Type,Description,Source_or_Test,Seed,Status,Resolution,Regression_Test,Notes
+SPEC-MASK-001,SPEC_CONFLICT,"Comment says mask=1 suppresses interrupt but RTL implements r_mask & toggled (mask=1 behaves like enable)","axilgpio.v comments/RTL; verification_plan.txt Section 8",N/A,OPEN,TBD,INT-001,"Keep reference-model polarity configurable; no final specification sign-off until owner decision"

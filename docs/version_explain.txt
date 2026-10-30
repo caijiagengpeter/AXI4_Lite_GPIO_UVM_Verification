@@ -1,0 +1,259 @@
+AXI4-Lite GPIO UVM 验证环境版本说明
+====================================
+
+文档对象：v1.0 基线及 v2.0 升级建议
+代码位置：/home/ray/AXI4_Lite
+说明日期：2026-10-21
+
+
+1. v1.0 架构与总体数据流
+------------------------
+
+v1.0 由两个 UVM agent、一个 env 和一个 scoreboard 组成：
+
+  AXI stimulus path
+    AXI sequence -> AXI sequencer -> AXI driver -> axi4l_if -> DUT
+
+  AXI observation path
+    DUT/axi4l_if -> AXI monitor -> completed transaction -> scoreboard
+
+  GPIO stimulus path
+    GPIO sequence -> GPIO sequencer -> GPIO driver -> gpio_if.i_gpio -> DUT
+
+  GPIO observation path
+    DUT/gpio_if -> GPIO monitor -> every-cycle gpio_observation -> scoreboard
+
+env 负责创建并连接两个 agent 和 scoreboard。tb_top 负责时钟、复位、接口、
+DUT 实例化以及 virtual interface 的 config_db 配置。v1 smoke 采用主动 AXI agent
+和主动 GPIO agent；monitor 无论 agent 为 active 或 passive 都存在。
+
+
+2. v1.0 各组件职责
+------------------
+
+2.1 AXI4-Lite agent
+
+  - sequence item 描述 READ/WRITE、地址、数据、WSTRB、PROT 以及各通道延迟。
+  - driver 对 AW 和 W 使用两个并发 task，因此支持 AW-first、W-first 和同周期
+    到达；读通道独立驱动 AR，并可在 BREADY/RREADY 上制造 backpressure。
+  - monitor 分别保存已 handshake 的 AW 和 W，按 FIFO 最老项配对；AR、写响应
+    和读响应也分别排队。
+  - v1 monitor 只有一个对外 analysis port。写事务在 BVALID && BREADY 时才发布，
+    读事务在 RVALID && RREADY 时才发布。因此 scoreboard 看到的是 completed
+    transaction（完成事务），不是 request acceptance（请求接收）事件。
+
+2.2 GPIO agent
+
+  - sequence item 给出 i_gpio 电平和保持周期。
+  - driver 在复位释放后驱动 i_gpio，并在复位期间回到 0。
+  - monitor 每个 ACLK 周期发布 reset_n、i_gpio、o_gpio、o_int。
+  - monitor 的 observed_input_levels 只是观察统计，不是功能预测或自动比对。
+
+2.3 env
+
+  - 创建 axi4l_agent、gpio_agent、axi4l_gpio_scoreboard。
+  - 把 AXI monitor 的完成事务流和 GPIO monitor 的逐周期采样流接入 scoreboard。
+  - v1 没有 virtual sequencer，也没有 RAL model。
+
+2.4 scoreboard
+
+  - 保存 32-bit model_gpio，并把 [31:NOUT] 固定为 0。
+  - 根据完成的 AXI write 更新 model_gpio。
+  - 对 AXI response 检查 OKAY。
+  - 对 output alias readback 和实际 o_gpio 做自动比对。
+  - 复位时把输出模型恢复为 GPIO_DEFAULT_OUTPUT，而不是假设固定为 0。
+
+
+3. v1.0 的 single-outstanding 行为
+---------------------------------
+
+虽然 monitor 内部使用 FIFO，能够正确记录 AW/W 不同周期握手和按序响应，但 v1
+driver 的 run_phase 每次只 get_next_item 一个 transaction，并一直等待该 transaction
+的 B 或 R handshake 完成后才 item_done，然后才取得下一项。因此：
+
+  - 一个 sequence 可以连续写很多 item，但线上仍是逐项完成后再发下一项。
+  - 写内部允许 AW/W 独立并发，但不是多个 logical write 同时 outstanding。
+  - read 和 write 也不会由同一个 driver 真正并发发起。
+  - monitor 的队列为未来扩展提供了基础，不能据此宣称已验证 multi-outstanding。
+
+严格说，AXI4-Lite 无 ID，响应必须按顺序关联；“multi-outstanding”在本项目中指
+master 在前一响应尚未完成时继续提交后续 AW/W/AR，由 FIFO 维护顺序，而不是像
+AXI4 full 那样按 ID 乱序完成。
+
+
+4. B/R completion 才发布 transaction 的 timing 局限
+-------------------------------------------------------
+
+DUT 的写副作用发生在内部 axil_write_ready 为真、AW 和 W 已配对且写入被接受的
+时钟边沿。B handshake 可能因为 bready_delay 晚很多周期。v1 monitor 到 B handshake
+才把 write 发布给 scoreboard，于是 scoreboard 也到那时才更新 model_gpio。
+
+这会带来两个问题：
+
+  - scoreboard 无法准确断言 o_gpio 应在哪一拍变化，只能在响应完成后检查最终值。
+  - 若响应被长时间 backpressure，DUT 输出早已变化，但 reference model 仍是旧值。
+
+读也有相同的抽象问题：DUT 在 accepted-read sampling point 锁存 RDATA，而 v1
+scoreboard 到 R handshake 才根据“当前模型状态”计算 expected read data。若请求到
+响应之间状态发生变化，live-state comparison 可能误报或漏报。
+
+因此 request acceptance 和 response completion 必须是两个不同事件：前者驱动
+功能状态预测和 read snapshot，后者只做响应、顺序、延迟和数据完成检查。
+
+
+5. gpio_check_pending + gpio_settle_samples workaround
+-------------------------------------------------------
+
+v1 在完成一个 output write 后：
+
+  gpio_check_pending  = 1
+  gpio_settle_samples = 1
+
+GPIO monitor 后续第一个样本只用于等待，第二个样本才将 o_gpio 与 model_gpio 比较。
+这样避免把“B handshake 时刚更新的新模型”错误地同一个较早 GPIO 样本比较。
+
+这是 stable-state workaround（稳定态折中），优点是简单且足够支撑当前 smoke；
+缺点是它没有表达真实 side-effect cycle，也没有把每次写映射到独立期望事件。
+
+
+6. v1.0 GPIO input path 的实际覆盖边界
+--------------------------------------
+
+RTL 输入路径为：
+
+  i_gpio -> q_gpio -> qq_gpio -> INPUT
+                         |
+               last_gpio ^ qq_gpio
+                         |
+                   CHANGED sticky
+                         |
+                MASK/enable expression
+                         |
+                     INT -> r_int -> o_int
+
+v1 GPIO monitor 的确每拍采样 i_gpio/o_gpio/o_int，但 scoreboard 尚未维护 q、qq、
+last、changed、mask、registered interrupt 的模型。故 gpio_agent_smoke_test 证明的是
+sequence -> driver -> interface -> monitor 链路可运行，以及复位默认 o_gpio 正确；它
+尚不能证明：
+
+  - INPUT 在正确的 2FF 延迟后读到 i_gpio；
+  - 上升沿和下降沿都设置 CHANGED；
+  - CHANGED sticky 和 W1C 正确；
+  - 同拍 W1C 与新变化时 hardware set wins；
+  - MASK、INT 和 registered o_int 的值及延迟正确。
+
+
+7. v1.0 scoreboard 已覆盖范围
+----------------------------
+
+当前已经自动检查：
+
+  - LOAD/SET/CLEAR/TOGGLE 四种 output operation；
+  - WSTRB 逐 byte 生效，未选 byte 保持；
+  - NOUT<32 时高位固定为 0；
+  - 0x00/0x04/0x08/0x0C 四个 output read alias 返回同一当前输出；
+  - BRESP/RRESP 为 OKAY；
+  - o_gpio 的响应后稳定态；
+  - reset release 后 o_gpio == GPIO_DEFAULT_OUTPUT。
+
+axi4l_smoke_test 已包含四种操作、partial LOAD、alias readback 以及 AW/W 延迟差异。
+历史日志显示该测试为 6 write、9 read、7 GPIO check，0 UVM error；
+gpio_agent_smoke_test 历史日志显示 4 个输入电平被 monitor 观察到，0 UVM error。
+
+
+8. v1.0 已知缺陷与风险
+----------------------
+
+  1) gpio_check_pending 只有 1 bit。若连续写在前一检查完成前到达，新的写会覆盖
+     “还有一次检查”的含义，中间 o_gpio 状态可能完全没有被验证。
+  2) 输出检查是 stable-state，不是 cycle-accurate；不能准确检查副作用延迟。
+  3) scoreboard 使用 monitor 看到的 actual bus transaction。它没有独立的 BFM
+     intent stream，因此 sequence 想发送什么与 driver 实际发出什么之间的错误可能
+     不会被发现；monitor 和 DUT 若以同一种错误方式解释信号，也存在共同模式风险。
+  4) driver 是 single-outstanding，尚未覆盖真正的 back-to-back/pipelined 请求压力、
+     多个排队响应、队列满/背压交互、读写并发。
+  5) INPUT/CHANGED/MASK/INT/o_int 没有完整 reference model 和 read checking。
+  6) 没有功能 coverage 实现，coverage_plan.txt 目前只是计划。
+  7) 没有 testbench/DUT AXI SVA 守护 VALID/payload stability 等局部协议规则。
+  8) MASK polarity 存在规格冲突：注释说 1=mask（禁止），RTL 实际计算
+     r_mask & toggled，即 1=enable（允许）。在 owner 决策前不能做规格 sign-off。
+  9) 普通 RTL 仿真只能验证 2FF 的离散采样/延迟意图，不能证明亚稳态物理行为；
+     小于一个时钟周期的异步脉冲也可能被 level synchronizer 漏采。
+
+
+9. v1.0 完成项与未完成项
+------------------------
+
+已完成：
+
+  - 可复用 AXI4-Lite active/passive agent 基础结构；
+  - AW/W 独立驱动及 monitor FIFO 配对；
+  - GPIO active/passive agent 和逐拍 observation；
+  - env 自动连接；
+  - output register reference model；
+  - LOAD/SET/CLEAR/TOGGLE、WSTRB、alias readback、OKAY response、reset default；
+  - AXI smoke 与 GPIO agent smoke。
+
+未完成：
+
+  - request-acceptance 与 response-completion 双事件接口；
+  - cycle-tagged output expected-event queue；
+  - 输入/CDC/CHANGED/MASK/INT/o_int 全路径模型；
+  - input/interrupt 定向和随机测试；
+  - 真正 pipelined/multi-outstanding master 模式；
+  - functional coverage、SVA、RAL、reset-in-flight stress；
+  - MASK polarity 规格决议和最终 sign-off。
+
+
+10. v2.0 升级目标和建议架构
+---------------------------
+
+建议事件/data flow：
+
+  AXI monitor
+    |-- request_ap: AW+W paired 或 AR handshake
+    |      |-- accept_cycle / AW cycle / W cycle / transaction_id
+    |      `-> predictor/reference model
+    |
+    `-- response_ap: B 或 R handshake
+           |-- response_cycle / response / read data / transaction_id
+           `-> ordered response checker
+
+  GPIO monitor -- every-cycle sample + sample_cycle --> cycle model/checker
+
+  reference model
+    |-- model_gpio + one expected event per accepted output write
+    |-- q/qq/last/changed/mask/int sequential model
+    |-- read expectation FIFO captured at AR acceptance
+    `-- write/read response FIFO matched at B/R completion
+
+v2.0 的优先目标：
+
+  - 分离 request acceptance 与 response completion，避免用响应时刻代替副作用时刻；
+  - 给两个 monitor 使用统一单调 sample_cycle，并把跨 monitor 的处理延后一拍，消除
+    同一个仿真 time slot 中 callback 顺序的不确定性；
+  - 以 queue 记录每次 output write 的 due cycle、transaction_id 和 expected o_gpio，
+    同时逐周期比较 pin，连续写也不会折叠中间状态；
+  - 精确模拟 RTL NBA 语义：read 先取 pre-edge snapshot；q/qq/last 移位；CHANGED
+    W1C 后再应用 hardware set；o_int 使用前一拍 active vector；
+  - MASK polarity 可配置，默认匹配 RTL 的 1=enable，并持续保留 SPEC-MASK-001；
+  - 增加 GPIO CDC/change/interrupt directed test 和 output randomized test；
+  - 增加 register/access/WSTRB/AW-W-order/edge/interrupt functional coverage；
+  - 增加 AW/W/AR/B/R 在 backpressure 下 VALID/payload stable 的基础 SVA；
+  - 保留 axi4l_smoke_test 和 gpio_agent_smoke_test 作为兼容回归。
+
+后续 v2.x 建议：
+
+  - driver 增加可配置 outstanding depth，由独立 AW、W、AR issue worker 和 B、R
+    completion worker 驱动，默认 depth=1 保持调试体验；
+  - 增加 BFM intent analysis port，将 sequence/driver intent 与 monitor actual 分开比较；
+  - 对真正 pipelined 条件下 DUT 内部 commit timing 建立可观测规则。外部 AW/W 都被
+    接收不一定等于 GPIO 寄存器同拍 commit，尤其前一 B response 被 stall 时；可通过
+    明确 micro-architecture contract、bind checker 或 response-availability event 处理；
+  - 增加 reset-in-flight、并发 read/write、短异步脉冲、W1C+new-change 同拍等测试；
+  - 实现 RAL、coverage merge、code coverage 和正式 regression/sign-off 报告。
+
+结论：v1.0 是“输出寄存器 + agent 链路可用”的可靠学习基线，但不能等同于完整的
+GPIO/中断或 pipelined AXI sign-off。v2.0 应优先把事件时间点和完整状态模型做正确，
+再扩展高 outstanding driver；这样更容易维护，也更容易定位失败属于 stimulus、
+protocol、predictor 还是 DUT。

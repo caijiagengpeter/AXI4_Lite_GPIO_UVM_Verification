@@ -1,0 +1,935 @@
+AXI4-Lite GPIO Verification Plan
+================================
+
+Document status : v1.0 - Ready for implementation
+DUT             : ZipCPU axilgpio.v
+Target file     : dut/rtl/axilgpio.v
+Verification use: Learning project + resume/portfolio project
+Language        : SystemVerilog/UVM (recommended), SVA
+
+
+1. Project goals
+----------------
+
+1.1 Functional goal
+Verify that axilgpio is a protocol-compliant AXI4-Lite slave and that its
+memory-mapped register operations correctly control GPIO outputs, sample GPIO
+inputs, record input changes, manage interrupt masks, and generate interrupts.
+
+1.2 Learning goal
+Build an end-to-end reusable verification environment that demonstrates:
+
+  - AXI4-Lite five-channel handshake understanding.
+  - Independent AW and W channel ordering and pairing.
+  - Backpressure, partial writes, sticky status, and W1C behavior.
+  - GPIO input clock-domain crossing (CDC) intent and change detection.
+  - UVM agent, monitor, scoreboard, functional coverage, SVA, and RAL usage.
+  - Layered regressions, bug triage, coverage closure, and sign-off criteria.
+
+1.3 Resume deliverables
+
+  - Reusable AXI4-Lite master agent and GPIO input agent.
+  - Self-checking scoreboard/reference model.
+  - UVM register model with prediction/mirroring strategy.
+  - Protocol and DUT-specific assertions.
+  - Coverage model and traceable test matrix.
+  - Reproducible smoke/nightly/parameter regressions and summary report.
+
+1.4 Out of scope
+
+  - Modifying the DUT RTL.
+  - Analog simulation of metastability or MTBF calculation.
+  - Electrical GPIO properties, I/O pads, drive strength, and external
+    tri-state circuitry.
+  - AXI4 burst, ID, or out-of-order features (not part of AXI4-Lite).
+
+
+2. DUT functional summary
+-------------------------
+
+The DUT is an AXI4-Lite-controlled GPIO peripheral. Software accesses eight
+32-bit word locations. The lower four locations operate on the GPIO output
+register. When NIN > 0, the upper four expose synchronized GPIO input state,
+sticky change status, interrupt mask/control, and active interrupt bits.
+
+Default parameters observed in the RTL:
+
+  C_AXI_ADDR_WIDTH = 5
+  C_AXI_DATA_WIDTH = 32 (localparam)
+  OPT_SKIDBUFFER   = 1
+  OPT_LOWPOWER     = 0
+  NOUT             = 30
+  NIN              = 5
+  DEFAULT_OUTPUT   = 0
+
+Recommended supported parameter envelope for verification:
+
+  1 <= NOUT <= 32
+  0 <= NIN  <= 32
+
+The implementation uses two sampling registers (q_gpio and qq_gpio) before
+functional logic consumes an asynchronous GPIO input. last_gpio is a third
+register used for edge/change comparison; it is not an additional synchronizer
+stage for the value consumed by the DUT.
+
+
+3. Register map and expected behavior
+-------------------------------------
+
+Address  Name      Access       Expected behavior
+0x00     LOAD      RW/alias-R   Write replaces strobed output bytes.
+0x04     SET       RW/alias-R   Write 1 sets selected output bits.
+0x08     CLEAR     RW/alias-R   Write 1 clears selected output bits.
+0x0C     TOGGLE    RW/alias-R   Write 1 toggles selected output bits.
+0x10     INPUT     RO           Synchronized qq_gpio value; upper bits zero.
+0x14     CHANGED   RW1C         Sticky input-change bits; upper bits zero.
+0x18     MASK      RW           Interrupt mask/enable bits; upper bits zero.
+0x1C     INT       RO           r_mask & toggled; upper bits zero.
+
+Important read alias behavior:
+
+  - Reads at 0x00, 0x04, 0x08, and 0x0C all return current r_gpio/o_gpio.
+  - With NIN > 0, writes to INPUT and INT have no functional effect.
+  - With NIN = 0, the upper four word addresses repeat the lower four output
+    operations because the address decode forces the upper selector to zero.
+  - Address bits [1:0] are ignored. Unaligned byte addresses therefore alias
+    the containing word; this is current RTL behavior, not an error response.
+  - BRESP and RRESP are always OKAY (2'b00); the DUT has no SLVERR/DECERR path.
+
+
+4. Verification architecture
+-----------------------------
+
+Recommended environment:
+
+  tb_top
+    - Clock/reset generator
+    - AXI4-Lite interface with clocking blocks and SVA binding
+    - GPIO input interface
+    - DUT
+    - uvm_test_top
+        - AXI4-Lite active master agent
+          * sequencer
+          * driver (AW/W/AR independently controlled)
+          * monitor
+        - GPIO active input agent
+          * sequencer
+          * driver
+          * monitor
+        - Optional passive output/interrupt monitor
+        - RAL model + adapter + predictor
+        - Scoreboard/reference model
+        - Functional coverage collector
+        - Virtual sequencer
+
+Driver requirements:
+
+  - AWVALID and WVALID must be drivable with independent delays and ordering.
+  - VALID must remain asserted and payload stable until its handshake.
+  - BREADY and RREADY must support deterministic and randomized stalls.
+  - Read and write traffic must be able to run concurrently.
+  - GPIO input changes must support phase offset relative to ACLK, single-bit,
+    multi-bit, short-pulse, and random patterns.
+
+Monitor requirements:
+
+  - Reconstruct a write only after one AW and one W handshake have both occurred.
+  - Never assume AW and W handshake in the same cycle.
+  - Publish request and response timestamps to allow latency/stall coverage.
+  - Sample RDATA only on RVALID && RREADY and BRESP on BVALID && BREADY.
+
+4.1 Outstanding and pipelining policy
+
+The master agent shall provide a configurable outstanding/pipeline mode:
+
+  - Smoke/debug mode may limit traffic to one logical write and one logical
+    read outstanding at a time for simple waveforms and failure triage.
+  - Stress mode must support back-to-back and pipelined AW, W, and AR traffic.
+    AW and W issue timing remains independently configurable; the driver must
+    not serialize the channels merely to simplify transaction bookkeeping.
+  - The monitor shall maintain separate FIFO queues for accepted AW and W
+    items and pair the oldest unmatched address with the oldest unmatched data.
+    It must not assume same-cycle handshakes or derive pairing from issue time.
+  - Accepted AR items and expected read responses shall likewise be queued in
+    order. Write-response expectations are queued after ordered AW/W pairing.
+  - AXI4-Lite has no transaction ID. Requests and responses are therefore
+    associated in protocol order; the agent must neither expect nor invent
+    out-of-order response matching.
+  - Configuration shall control the driver's issue limits independently from
+    DUT backpressure. A DUT that deasserts READY may naturally accept fewer
+    items than the configured master-side limit.
+
+Scoreboard/counter bookkeeping is the primary check for request/response
+pairing, ordering, loss, and duplication. Assertions provide local protocol
+checks and supporting evidence.
+
+
+5. AXI4-Lite protocol verification points
+-----------------------------------------
+
+5.1 Reset and idle
+
+  - The top-level functional registers sample active-low S_AXI_ARESETN on the
+    posedge of S_AXI_ACLK; check functional state using sampled/synchronous
+    reset semantics, not an asynchronous-reset assumption.
+  - After reset has been sampled active, the DUT produces no valid B or R
+    response, and pending logical transactions are flushed.
+  - Do not make pass/fail depend on an unconfirmed combinational READY value
+    while reset is active. Confirm the skidbuffer's detailed reset/READY
+    behavior during implementation for both OPT_SKIDBUFFER modes.
+  - The first post-reset access completes correctly without a stale response.
+
+5.2 Write address/data independence
+
+Exercise all legal orders:
+
+  - AW and W valid in the same cycle.
+  - AW accepted first, W arrives after 1, 2, and random N cycles.
+  - W accepted first, AW arrives after 1, 2, and random N cycles.
+  - AWVALID and WVALID asserted together but accepted on different cycles.
+  - Back-to-back writes with no intentional idle cycle.
+
+Check that exactly one address is paired with exactly one data item, no item is
+lost/duplicated, and the response corresponds to the completed pair.
+
+Note: with OPT_SKIDBUFFER=0 the RTL only raises both READY signals when AWVALID
+and WVALID are simultaneously present. This is legal only when the master obeys
+the AXI rule that VALID is independent of READY and remains asserted until
+handshake. The no-skid tests must verify progress under a compliant master and
+must not require the slave to accept an isolated channel before its partner.
+
+5.3 Write response channel
+
+  - One and only one B response per completed write.
+  - BRESP is OKAY.
+  - BVALID remains asserted during BREADY=0.
+  - No new response overwrites an outstanding stalled response.
+  - A new write may be accepted in the same cycle an old response handshakes,
+    when the selected implementation mode permits it.
+
+5.4 Read address/data channel
+
+  - One and only one R response per accepted AR request.
+  - RRESP is OKAY.
+  - RVALID remains asserted during RREADY=0.
+  - RDATA and RRESP remain stable while RVALID && !RREADY.
+  - Back-to-back reads return data in request order.
+  - A new read may be accepted in the same cycle the previous response
+    handshakes, when permitted by the implementation.
+
+5.5 Backpressure and concurrency
+
+  - Hold BREADY low for short, long, and randomized intervals.
+  - Hold RREADY low for short, long, and randomized intervals.
+  - Apply AW-only and W-only stalls before completing the pair.
+  - Run concurrent read and write streams to the same and different registers.
+  - Read while B is stalled; write while R is stalled.
+  - Verify no combinational dependence from READY to master's VALID in the TB.
+  - Verify forward progress with bounded, compliant stimulus.
+
+5.6 Payload stability
+
+Classify stalled-channel stability checks by signal ownership:
+
+  - AWVALID/AWADDR/AWPROT, WVALID/WDATA/WSTRB, and
+    ARVALID/ARADDR/ARPROT stability are Master/TB legality checks. Failures
+    identify illegal driver stimulus and must not be reported as DUT failures.
+  - BVALID/BRESP and RVALID/RDATA/RRESP stability are DUT slave protocol
+    assertions and are DUT failures when legal stimulus is in use.
+
+In every case, VALID and its payload must remain stable while VALID && !READY.
+
+5.7 Protection fields
+
+AWPROT and ARPROT are intentionally unused. Sweep legal values 3'b000-3'b111
+and confirm they do not alter register behavior.
+
+
+6. GPIO output functional verification points
+----------------------------------------------
+
+6.1 LOAD
+
+For each byte lane and useful combinations of WSTRB:
+
+  expected_next = apply_wstrb(previous, WDATA, WSTRB)
+
+Check zero, all-one, walking-one, walking-zero, alternating, random, and
+DEFAULT_OUTPUT-dependent initial values. Bits [31:NOUT] must read as zero and
+must not appear on o_gpio when NOUT < 32.
+
+6.2 SET
+
+For each strobed byte:
+
+  expected_next_byte = previous_byte | WDATA_byte
+
+Unstrobed bytes remain unchanged. WDATA bit 0 is a no-op; bit 1 sets the bit.
+
+6.3 CLEAR
+
+For each strobed byte:
+
+  expected_next_byte = previous_byte & ~WDATA_byte
+
+Unstrobed bytes remain unchanged. WDATA bit 0 is a no-op; bit 1 clears the bit.
+
+6.4 TOGGLE
+
+For each strobed byte:
+
+  expected_next_byte = previous_byte ^ WDATA_byte
+
+Unstrobed bytes remain unchanged. WDATA bit 0 is a no-op; bit 1 toggles the bit.
+
+6.5 WSTRB
+
+Test all 16 WSTRB values for LOAD, SET, CLEAR, TOGGLE, MASK, and CHANGED/W1C.
+Mandatory directed patterns include 0000, 0001, 0010, 0100, 1000, 0011, 1100,
+0101, 1010, and 1111. A write with WSTRB=0000 returns OKAY but changes no state.
+
+For widths not divisible by eight, explicitly exercise valid and unused bits in
+the final byte. Unimplemented output/input bits must remain/read zero.
+
+
+7. GPIO input, CDC, change detection, and interrupt verification
+---------------------------------------------------------------
+
+7.1 INPUT synchronization
+
+  - Drive stable 0/1 and multi-bit patterns into i_gpio.
+  - Confirm INPUT eventually reflects qq_gpio after the two-flop sampling delay.
+  - Sweep input transition phase across the ACLK period to verify sampling
+    latency and boundary behavior; ordinary RTL simulation does not model a
+    physical setup/hold aperture or metastability.
+  - Avoid changing i_gpio in the exact same simulation timestep as the active
+    ACLK edge except in a test explicitly about simulator scheduling. Use a
+    clocking block and defined skew so the testbench does not create a race.
+  - Do not claim metastability verification from RTL simulation. Structural
+    CDC analysis, implementation constraints, and MTBF analysis are separate
+    sign-off evidence.
+  - Pulses shorter than a clock period may be missed; record this as expected
+    level-synchronizer behavior, not a DUT failure.
+
+7.2 CHANGED sticky status
+
+  - A synchronized 0->1 or 1->0 transition sets the corresponding bit.
+  - Status remains set after the input becomes stable or changes again.
+  - Multiple input bits accumulate independently.
+  - Repeated changes while already set keep the bit set.
+  - Upper bits [31:NIN] read zero.
+
+7.3 CHANGED W1C
+
+  - Write data 1 with its byte strobe set clears the selected status bit.
+  - Write data 0 does not clear it.
+  - WSTRB=0 for that byte does not clear it.
+  - Clearing one bit does not clear other bits.
+  - Partial-byte and multi-byte clears follow WSTRB.
+  - If W1C clear and a newly detected change target the same bit on the same
+    clock edge, RTL assignment order makes the new change win, so status remains
+    set. Treat this as the reference-model rule unless the specification is
+    changed.
+
+7.4 MASK and INT
+
+Until the semantic conflict in Section 8 is resolved, collect both expected
+interpretations but compare pass/fail against a selected configuration:
+
+  RTL mode     : int_active = r_mask & toggled
+  Comment mode : int_active = ~r_mask & toggled
+
+Verify per bit:
+
+  - No changed bit -> INT bit is zero.
+  - Changed status plus controlling MASK value -> expected INT bit.
+  - Multiple active bits combine correctly.
+  - INT register equals the implemented per-bit active expression.
+  - o_int equals registered reduction of active bits.
+  - Setting/clearing unrelated mask bits does not affect other interrupt bits.
+  - MASK obeys byte enables and preserves unstrobed bytes.
+  - Writes to INT have no effect.
+
+7.5 Interrupt timing
+
+The RTL registers o_int from the previous cycle's r_mask/toggled values.
+Therefore verify, cycle accurately:
+
+  - o_int asserts after an eligible sticky bit becomes active, with the RTL's
+    one-clock registered latency.
+  - o_int remains asserted while any eligible sticky bit remains active.
+  - W1C clearing the last eligible status bit causes o_int to deassert after
+    the registered update latency, not combinationally in the write cycle.
+  - Clearing one of several active bits leaves o_int asserted.
+  - Simultaneous clear/new change follows the change-wins rule.
+
+7.6 Side-effect isolation
+
+Use directed checks to isolate the effect caused by each software access:
+
+  - Reads have no write side effect.
+  - LOAD/SET/CLEAR/TOGGLE writes do not modify r_mask or CHANGED, except that
+    an independent GPIO hardware event may update CHANGED concurrently.
+  - A MASK write does not change r_gpio.
+  - INPUT/INT writes do not modify r_gpio or r_mask and do not directly set or
+    clear CHANGED; independent hardware events may still update CHANGED/INT.
+  - A CHANGED W1C write affects only selected changed bits and does not modify
+    r_gpio or r_mask.
+
+Assertions and scoreboard checks shall compare access-caused state deltas or
+apply guards for concurrent GPIO hardware events. They must not flag a legal
+hardware-set or registered interrupt update as a software side effect.
+
+7.7 NIN=0
+
+  - o_int is permanently zero.
+  - Input-related read data is not present; upper word addresses alias output
+    LOAD/SET/CLEAR/TOGGLE behavior.
+  - i_gpio is functionally ignored.
+
+
+8. Open specification issue: MASK semantic conflict
+---------------------------------------------------
+
+Issue ID: SPEC-MASK-001
+
+Comment/spec wording in axilgpio.v:
+
+  "If any mask bit is set, then toggled data will not trigger an interrupt."
+  "active" is described as toggled data AND a clear interrupt mask bit.
+
+Implemented RTL:
+
+  int_toggled = r_mask & toggled
+  r_int       <= |(r_mask & toggled)
+
+These are opposite polarities. In RTL, r_mask=1 behaves as an interrupt enable,
+not as an active-high mask.
+
+Required decision before final sign-off:
+
+  A. Comment is authoritative: MASK=1 suppresses interrupt. RTL has a bug.
+  B. RTL is authoritative: MASK=1 enables interrupt. Rename/document as ENABLE.
+
+Verification handling before decision:
+
+  - Do not modify DUT.
+  - Keep the scoreboard mask polarity configurable.
+  - Run a focused test that records both predictions and actual RTL behavior.
+  - Mark the test expected-pass in RTL mode and expected-mismatch in comment mode.
+  - Do not claim specification sign-off until the owner records decision A or B.
+  - Once decided, freeze the reference model and update test expectations and
+    RAL field description without silently changing historical results.
+
+
+9. Reset verification
+---------------------
+
+S_AXI_ARESETN is active low. The axilgpio top-level functional registers check
+it inside posedge S_AXI_ACLK processes, so verify their state using sampled/
+synchronous reset semantics. Confirm the instantiated skidbuffer's detailed
+reset implementation separately when binding its assertions; do not generalize
+the top-level observation into a blanket asynchronous- or synchronous-reset
+claim for every internal block.
+
+Check:
+
+  - Reset at time zero for multiple clocks.
+  - Reset asserted during idle.
+  - Reset asserted with AW pending, W pending, BVALID stalled, AR pending, and
+    RVALID stalled; after reset is sampled, pending logical transactions and
+    responses are flushed and no valid B/R response is produced.
+  - Reset asserted during GPIO synchronization/change detection.
+  - Reset deasserted near different clock phases, with functional checking from
+    the next active edge.
+  - Normal reset stimulus uses a clocking block/skew and avoids changing reset
+    in the same timestep as an active edge. Same-timestep changes are reserved
+    for an explicitly labeled simulator-scheduling test, not functional reset
+    sign-off.
+  - o_gpio becomes DEFAULT_OUTPUT for implemented bits.
+  - Non-output r_gpio bits are zero when NOUT < 32.
+  - q_gpio, qq_gpio, last_gpio, toggled, r_mask, and o_int become zero.
+  - BVALID/RVALID become zero.
+  - First post-reset reads and writes are correct.
+  - Reset with i_gpio high: INPUT first resets to zero, then converges through
+    the synchronizer; resulting change-status behavior is checked explicitly.
+
+
+10. Corner cases
+----------------
+
+  - All-zero/all-one/walking-one/walking-zero/alternating data.
+  - NOUT/NIN boundary bits: 0, 7, 8, 15, 16, 23, 24, 30, 31 as applicable.
+  - NOUT = 1, 8, 9, 30, 31, 32.
+  - NIN = 0, 1, 5, 8, 9, 31, 32.
+  - DEFAULT_OUTPUT = zero, all implemented ones, alternating, random legal value.
+  - OPT_SKIDBUFFER = 0 and 1.
+  - OPT_LOWPOWER = 0 and 1; with LOWPOWER=1, RDATA must be zero when RVALID=0.
+  - WSTRB=0000 and every single/multiple-byte combination.
+  - Back-to-back operations on the same output bit using different operation
+    registers (LOAD->SET->CLEAR->TOGGLE and randomized sequences).
+  - Same-cycle read/write to related registers; expected read value is derived
+    from the RTL sampling/NBA timing and documented by the scoreboard.
+  - W1C clear concurrent with same-bit and different-bit input changes.
+  - MASK update concurrent with a sticky change and with o_int assertion.
+  - Multiple GPIO changes in one cycle.
+  - Input toggles every clock, remains stable for long intervals, and produces
+    pulses shorter/longer than one clock.
+  - Long R/B backpressure with simultaneous opposite-direction traffic.
+  - Response handshake and next request acceptance in the same cycle.
+  - Unaligned addresses and all eight word addresses.
+  - AWPROT/ARPROT full sweep.
+
+
+11. Negative and error-handling tests
+-------------------------------------
+
+The DUT intentionally returns only OKAY. Negative tests therefore check defined
+behavior and robustness, not unsupported error responses:
+
+  - Unaligned addresses: expect word alias caused by ignoring address[1:0].
+  - Writes to INPUT and INT when NIN>0: expect OKAY; they do not modify r_gpio
+    or r_mask and do not directly set/clear CHANGED. Concurrent GPIO hardware
+    events may still update CHANGED and the registered interrupt state.
+  - Reads of operation aliases SET/CLEAR/TOGGLE: expect current output value.
+  - WSTRB=0: expect OKAY and no state change.
+  - Writes with ones in unimplemented GPIO bits: expect no observable effect and
+    zero on subsequent reads of unimplemented bits.
+  - Hold VALID high until READY after long delay: no duplicate transaction.
+  - Hold READY low indefinitely for a bounded test window: response remains
+    stable; testbench later releases READY to avoid an intentional deadlock.
+  - Reset aborts outstanding traffic cleanly, without stale post-reset response.
+
+Protocol-violating master stimulus (dropping VALID early or changing payload
+while stalled) is not used to judge DUT correctness. Such scenarios may be run
+only as separate robustness experiments and must be labeled "illegal stimulus".
+
+
+12. Scoreboard and reference model
+----------------------------------
+
+12.1 State
+
+Maintain:
+
+  model_gpio[31:0]
+  model_sync_q[NIN-1:0]
+  model_sync_qq[NIN-1:0]
+  model_last[NIN-1:0]
+  model_changed[NIN-1:0]
+  model_mask[NIN-1:0]
+  model_int (registered)
+
+12.2 Transaction timing
+
+  - Update write state only when the monitor has observed both AW and W
+    handshakes for the same logical transaction.
+  - Predict reads at the DUT's accepted-read sampling point, then compare on the
+    R handshake; do not sample live state only at response time.
+  - Model nonblocking-assignment timing for GPIO detection, W1C, mask update,
+    registered interrupt, and access/event concurrency.
+  - Clear model state on sampled reset and flush unmatched AW/W/AR items.
+  - Queue accepted AW and W items in separate FIFOs and pair them oldest-first;
+    queue AR requests and B/R expectations in protocol order. Do not assume AW
+    and W arrive together.
+  - Support configured single-outstanding debug traffic and multi-item
+    back-to-back/pipelined stress traffic. Because AXI4-Lite has no IDs,
+    response comparison uses ordered queues rather than ID lookup.
+
+12.3 Output model equations
+
+  LOAD   : byte_select(old, data, strb)
+  SET    : strobed byte = old | data
+  CLEAR  : strobed byte = old & ~data
+  TOGGLE : strobed byte = old ^ data
+
+Clamp model_gpio[31:NOUT] to zero.
+
+12.4 Input/interrupt precedence
+
+  - Shift sampled input through q -> qq -> last equivalents.
+  - Set changed when previous last ^ previous qq.
+  - Apply W1C only for WDATA=1 and matching WSTRB.
+  - When W1C and new change hit the same bit at one edge, set wins.
+  - Compute active bits using configurable mask polarity.
+  - Register model_int from the prior modeled active vector.
+
+12.5 Checks
+
+Compare:
+
+  - Every completed read's RDATA/RRESP.
+  - Every write's BRESP and exactly-once completion.
+  - o_gpio on each relevant clock.
+  - INPUT/CHANGED/MASK/INT register reads.
+  - o_int cycle by cycle after reset stabilization.
+
+Attribute state changes to software accesses versus independent GPIO hardware
+events. Side-effect checks must tolerate a concurrent legitimate hardware-set
+of CHANGED and the consequent registered INT/o_int update while still proving
+that the access itself did not modify unrelated writable state.
+
+
+13. UVM RAL plan
+----------------
+
+Create one 32-bit register block with byte addressing and map:
+
+  LOAD     0x00  RW              (canonical output mirror)
+  SET      0x04  readable command alias; reads current output state
+  CLEAR    0x08  readable command alias; reads current output state
+  TOGGLE   0x0C  readable command alias; reads current output state
+  INPUT    0x10  volatile RO
+  CHANGED  0x14  HW-set + W1C, volatile/hardware-updated
+  MASK     0x18  RW
+  INT      0x1C  volatile RO
+
+RAL cautions:
+
+  - SET/CLEAR/TOGGLE are readable command aliases with custom alias semantics,
+    not ordinary WO registers and not independent storage. Their reads return
+    current r_gpio just like LOAD.
+  - Use a custom predictor/callback, or model each as a readable alias whose
+    operation explicitly predicts the canonical GPIO state into the LOAD/output
+    mirror. Keep one canonical output prediction; do not let four mirrors drift.
+  - CHANGED is hardware-set plus software-W1C and must be marked volatile/
+    hardware-updated. Update its mirror from observed GPIO/event and frontdoor
+    activity, including the same-cycle change-wins rule, not from writes alone.
+  - INPUT and INT are volatile RO and are predicted from observed DUT/hardware
+    state rather than treated as stable software storage.
+  - Fields above NOUT/NIN are reserved, read zero, and not randomized as storage.
+  - MASK field naming/access description remains provisional until SPEC-MASK-001
+    is resolved; the predictor remains polarity-configurable until the spec
+    owner records the decision.
+  - With NIN=0, use a parameter-specific RAL map or explicitly model upper
+    addresses as output aliases rather than input registers.
+
+RAL tests:
+
+  - Reset-value test.
+  - Frontdoor read/write test for legal storage registers.
+  - Bit-bash only on suitable RW fields; exclude command aliases, RO, volatile,
+    and hardware-updated/W1C fields from generic assumptions.
+  - Access-policy test for RO/W1C/alias behavior.
+  - Mirror/predict test during external GPIO changes.
+
+
+14. Functional coverage plan
+----------------------------
+
+14.1 AXI coverage
+
+Coverpoints:
+
+  - Access type: read/write.
+  - Register address: all eight words plus unaligned aliases.
+  - AW/W order: same-cycle, AW-first, W-first.
+  - AW-W separation: 0, 1, 2-5, 6+ cycles.
+  - AR-to-R and completed-write-to-B latency buckets.
+  - RREADY/BREADY stall length: 0, 1, 2-5, 6+ cycles.
+  - WSTRB: all 16 values.
+  - BRESP/RRESP values observed.
+  - Concurrent read/write and response/request overlap.
+  - Outstanding occupancy: single and multiple queued items.
+  - Pipelined/back-to-back AW, W, and AR acceptance.
+
+Crosses:
+
+  - register x WSTRB
+  - register x AW/W order
+  - operation register x data pattern x WSTRB category
+  - read/write x backpressure bucket
+  - OPT_SKIDBUFFER x AW/W order x latency bucket
+  - outstanding mode x channel x occupancy bucket
+
+14.2 GPIO output coverage
+
+Cover:
+
+  - LOAD/SET/CLEAR/TOGGLE each changes and does not change a target bit.
+  - Each implemented output bit experiences 0->1 and 1->0.
+  - Each byte lane is written and preserved by WSTRB.
+  - Operation sequences and back-to-back mixed operations.
+
+14.3 GPIO input/interrupt coverage
+
+Cover:
+
+  - Each implemented input bit rises and falls.
+  - Single-bit and multi-bit changes.
+  - Change detected while status clear/already set.
+  - W1C data 0/1 x strobe off/on.
+  - Clear alone, change alone, and clear+change same cycle.
+  - MASK controlling value 0/1 x CHANGED 0/1 x INT result 0/1.
+  - One and multiple active interrupt bits.
+  - o_int assert, remain asserted, and deassert transitions.
+  - Input transition phase bucket relative to ACLK.
+  - Access type x unrelated-state-changed/no-change, excluding or separately
+    binning concurrent GPIO hardware events.
+
+Crosses:
+
+  - input edge direction x bit index
+  - CHANGED x MASK value x INT bit
+  - W1C x concurrent new change x resulting status
+  - number of active bits x o_int transition
+
+14.4 Parameter coverage
+
+Track successful regressions for NIN/NOUT boundary widths, both skid modes,
+both low-power modes, and multiple DEFAULT_OUTPUT values. Parameter coverage is
+reported as a regression configuration table rather than a runtime covergroup.
+
+Illegal/ignore bins:
+
+  - Do not create illegal bins for behavior the RTL intentionally aliases.
+  - Ignore input/interrupt crosses when NIN=0.
+  - Ignore bit indices outside the configured implemented width.
+
+
+15. SVA plan
+------------
+
+Bind assertions at the interface/DUT boundary. Reuse the DUT's existing FORMAL
+checks as supporting evidence, but keep simulation SVA independent and readable.
+
+Master/TB legality checks (driver failures, not DUT failures):
+
+  A01. AWVALID && !AWREADY |=> AWVALID and $stable(AWADDR/AWPROT).
+  A02. WVALID  && !WREADY  |=> WVALID and $stable(WDATA/WSTRB).
+  A03. ARVALID && !ARREADY |=> ARVALID and $stable(ARADDR/ARPROT).
+
+These checks verify legal master stimulus. Route their failure classification
+to the agent/TB so an illegal driver sequence cannot be counted as a DUT bug.
+
+DUT slave protocol assertions:
+
+  A04. BVALID  && !BREADY  |=> BVALID and $stable(BRESP).
+  A05. RVALID  && !RREADY  |=> RVALID and $stable(RDATA/RRESP).
+  A06. Each completed AW+W pair eventually produces a B response and no
+       duplicate B handshake occurs. Any unbounded eventually/exactly-once
+       form assumes the environment eventually asserts BREADY and reset does
+       not abort the transaction.
+  A07. Each AR handshake eventually produces an R response and no duplicate R
+       handshake occurs. Any unbounded eventually/exactly-once form assumes
+       the environment eventually asserts RREADY and reset does not abort the
+       transaction.
+  A08. No B response without a prior unmatched AW and W handshake.
+  A09. No R response without a prior unmatched AR handshake.
+  A10. BRESP/RRESP are always OKAY when valid.
+  A11. Once active-low reset is sampled at posedge ACLK, no valid B/R response
+       remains and pending transaction counters/queues are flushed.
+  A12. If OPT_LOWPOWER=1 and !RVALID, RDATA==0.
+
+For A06-A09, ordered scoreboard queues and request/response counters are the
+primary loss/duplication/exactly-once checks, especially under deep stalls,
+pipelining, and reset. SVA is a bounded/local aid unless the stated fairness
+assumptions are encoded and reviewed.
+
+DUT functional properties:
+
+  F01. Reset sets o_gpio to DEFAULT_OUTPUT.
+  F02-F05. LOAD/SET/CLEAR/TOGGLE next-state equations per selected bit/byte.
+  F06. Unstrobed output bytes remain stable after a write.
+  F07. Bits outside NOUT read zero.
+  F08. A synchronized detected change sets CHANGED.
+  F09. CHANGED remains high until legal W1C unless reset.
+  F10. W1C data=0 or disabled strobe cannot clear status.
+  F11. Same-cycle W1C plus new change results in CHANGED=1.
+  F12. MASK preserves unstrobed bytes.
+  F13. INT register matches selected mask-polarity expression.
+  F14. o_int matches the registered reduction of prior active bits.
+  F15. NIN=0 implies o_int==0.
+  F16. Writes to INPUT/INT do not modify r_gpio or r_mask and do not directly
+       clear/set CHANGED (NIN>0); independent GPIO events may update CHANGED
+       and the registered interrupt state concurrently.
+  F17. Reads cause no write-side state change.
+  F18. Output-operation writes do not modify r_mask or directly modify CHANGED.
+  F19. MASK writes do not modify r_gpio.
+  F20. CHANGED W1C modifies only selected changed bits and does not modify
+       r_gpio/r_mask. F16-F20 guard or account for concurrent hardware events.
+
+Useful cover properties:
+
+  - AW-first, W-first, and same-cycle write completion.
+  - Read/write accepted concurrently.
+  - R and B stalls followed by progress.
+  - Each output operation changes a bit.
+  - GPIO rise/fall -> CHANGED -> o_int assert -> W1C -> o_int deassert.
+  - Same-cycle clear and new change.
+
+
+16. Test case matrix
+--------------------
+
+ID       Priority  Test / main intent                              Main checks
+AXI-001  P0        Reset and first access                           Reset/handshake
+AXI-002  P0        Basic single read/write                          Data/response
+AXI-003  P0        AW and W same cycle                              Pairing/B
+AXI-004  P0        AW before W, directed gaps                       Pairing/no loss
+AXI-005  P0        W before AW, directed gaps                       Pairing/no loss
+AXI-006  P0        B-channel backpressure                           B stability
+AXI-007  P0        R-channel backpressure                           R stability
+AXI-008  P1        Back-to-back writes                              Throughput/order
+AXI-009  P1        Back-to-back reads                               Throughput/order
+AXI-010  P1        Concurrent reads and writes                      Independence
+AXI-011  P1        Random channel delays/backpressure               Protocol/scoreboard
+AXI-012  P1        Reset during each outstanding phase              Flush/no stale rsp
+AXI-013  P2        Full AWPROT/ARPROT sweep                          No functional effect
+AXI-014  P2        Unaligned address aliases                        Defined RTL behavior
+AXI-015  P1        Outstanding/pipelined agent mode                 Ordered queues/pairing
+
+OUT-001  P0        LOAD full-word                                   Exact replacement
+OUT-002  P0        SET directed                                     OR behavior
+OUT-003  P0        CLEAR directed                                   AND-NOT behavior
+OUT-004  P0        TOGGLE directed                                  XOR behavior
+OUT-005  P0        All 16 WSTRB values x four operations            Byte enables
+OUT-006  P1        Mixed random operation sequence                  Reference model
+OUT-007  P1        Read aliases 0x00-0x0C                           Current output
+OUT-008  P1        Boundary/unused output bits                      Clamp to zero
+OUT-009  P1        DEFAULT_OUTPUT parameter patterns                Reset value
+
+IN-001   P0        Stable input through synchronizer                INPUT latency/value
+IN-002   P0        Single-bit rise/fall                             CHANGED set
+IN-003   P0        Sticky and multi-bit accumulation                Persistence
+IN-004   P0        W1C per bit                                      Clear semantics
+IN-005   P0        W1C x all relevant WSTRB lanes                   Byte enables
+IN-006   P1        W1C concurrent with same-bit new change          Change wins
+IN-007   P1        Repeated/rapid input toggles                      Sampling limits
+IN-008   P1        Transition phase sweep                           CDC convergence
+
+INT-001  P0        MASK/INT focused polarity characterization       SPEC-MASK-001
+INT-002  P0        One active bit asserts o_int                     Latency
+INT-003  P0        W1C last active bit deasserts o_int              Latency
+INT-004  P1        Multiple active bits, clear one                  Reduction behavior
+INT-005  P1        Partial MASK write                               Preservation
+INT-006  P1        MASK update concurrent with change               Cycle accuracy
+INT-007  P1        INPUT/INT write isolation                        No direct writable effect
+
+FUNC-001 P0        Register side-effect isolation                   Access-caused deltas
+
+CFG-001  P0        Default parameter smoke                          Baseline
+CFG-002  P1        OPT_SKIDBUFFER=0/1                               Both architectures
+CFG-003  P1        OPT_LOWPOWER=0/1                                 Idle RDATA rule
+CFG-004  P1        NIN=0                                            Alias/no interrupt
+CFG-005  P1        NIN=1,8,9,32                                    Width boundaries
+CFG-006  P1        NOUT=1,8,9,31,32                                Width boundaries
+CFG-007  P2        Multiple DEFAULT_OUTPUT values                   Parameter robustness
+
+RAL-001  P1        RAL reset/access policy                          Model correctness
+RAL-002  P1        Command-alias prediction                         Mirror correctness
+RAL-003  P1        Hardware-updated volatile/W1C prediction         Mirror correctness
+
+RND-001  P1        Constrained-random mixed AXI/GPIO                Broad coverage
+RND-002  P1        Long random stress with resets                   Robustness
+RND-003  P2        Coverage-directed seeds                          Closure
+
+
+17. Regression layering
+-----------------------
+
+Level 0 - Compile/lint (every change)
+
+  - Compile all supported parameter configurations.
+  - Lint DUT/TB, run CDC structural checks if available.
+  - Elaborate SVA and RAL model.
+
+Level 1 - Smoke (every change, minutes)
+
+  - AXI-001..007, OUT-001..005, IN-001..005, INT-001..003, and
+    FUNC-001.
+  - Default parameters, one deterministic seed.
+
+Level 2 - Feature regression (daily)
+
+  - All P0/P1 directed tests.
+  - Random channel delays and moderate GPIO randomization.
+  - Both OPT_SKIDBUFFER and OPT_LOWPOWER values.
+  - Key NIN/NOUT boundaries.
+
+Level 3 - Nightly random/parameter regression
+
+  - RND-001/002 across many seeds.
+  - Full parameter configuration matrix.
+  - Long backpressure, concurrent traffic, reset injection.
+  - Merge code, assertion, and functional coverage.
+
+Level 4 - Coverage closure/sign-off
+
+  - Target uncovered legal bins and assertion covers.
+  - Re-run all bug-reproduction seeds.
+  - Review exclusions/waivers individually.
+  - Produce final requirements-to-tests traceability and result summary.
+
+Always log seed, parameter set, simulator version, git commit, test name, mask
+semantic mode, assertion summary, and coverage database identifier.
+
+
+18. Completion/sign-off criteria
+--------------------------------
+
+Protocol completion:
+
+  - All P0/P1 protocol tests pass in both skid-buffer modes.
+  - No AXI protocol assertion failures under legal stimulus.
+  - No lost, duplicated, or mismatched transactions.
+
+Functional completion:
+
+  - All P0/P1 GPIO, reset, WSTRB, W1C, CDC-intent, and interrupt tests pass.
+  - Scoreboard has zero mismatches across the agreed parameter matrix.
+  - All known bugs have a minimal reproducer, status, and regression test.
+
+Coverage completion (initial targets; adjust only by reviewed decision):
+
+  - 100% planned P0/P1 test execution and pass rate.
+  - 100% reachable assertion properties pass; planned cover properties reached.
+  - >= 95% functional coverage overall, with 100% on critical register,
+    WSTRB, AW/W ordering, W1C, and interrupt-polarity bins.
+  - >= 90% code coverage per metric where meaningful, with reviewed waivers for
+    parameter-inactive branches, defensive/default code, and formal-only code.
+  - No unreviewed coverage exclusions.
+
+Specification completion:
+
+  - SPEC-MASK-001 is resolved in writing by the design/spec owner.
+  - The scoreboard, RAL description, tests, and expected results all use the
+    chosen semantic interpretation.
+
+Quality/documentation completion:
+
+  - Clean reproducible regression from a fresh checkout.
+  - README explains how to run smoke/nightly tests and inspect failures.
+  - Verification plan, test matrix, coverage report, and final summary agree.
+  - No DUT RTL modification is required for verification-plan completion.
+
+
+19. Traceability summary
+------------------------
+
+Requirement area        Directed tests                    Coverage/assertions
+AXI handshakes          AXI-002..012, AXI-015            AXI CPs, A01..A11
+WSTRB                   OUT-005, IN-005, INT-005         reg x WSTRB, F06/F10/F12
+Output operations       OUT-001..009                     output CPs, F01..F07
+Input/CDC/change        IN-001..008                      edge/change CPs, F08..F11
+Interrupt              INT-001..007                     mask/int crosses, F13/F14
+Side-effect isolation   FUNC-001                         access delta CPs, F16..F20
+Reset                   AXI-001, AXI-012, OUT-009        A11, F01, reset crosses
+Parameters              CFG-001..007                     configuration table
+RAL                     RAL-001..003                     mirror/predict checks
+Random stress           RND-001..003                     merged coverage
+
+
+20. Review checklist before testbench implementation
+----------------------------------------------------
+
+  [ ] Confirm supported NIN/NOUT parameter range.
+  [ ] Resolve or formally track SPEC-MASK-001.
+  [ ] Agree on expected read-during-write timing for same-address concurrency.
+  [ ] Confirm reset is intentionally synchronous to S_AXI_ACLK.
+  [ ] Decide simulator/UVM version and coverage tools.
+  [ ] Freeze interface signal naming and transaction classes.
+  [ ] Implement ordered AW/W FIFOs and configurable outstanding/pipeline mode.
+  [ ] Implement configurable mask polarity in the reference model.
+  [ ] Review the first smoke test and scoreboard before scaling random traffic.
+

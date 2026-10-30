@@ -1,0 +1,20 @@
+# VCS simulation outputs
+/sim/simv*
+csrc/
+*.vdb/
+coverage_report/
+DVEfiles/
+*.fsdb
+*.vcd
+*.vpd
+*.log
+*.key
+vc_hdrs.h
+*.sch.verilog.xml
+
+# VCS/URG compile and report artifacts are covered above by
+# *.log, *.vdb/, coverage_report/, csrc/, and simv*.daidir/.
+
+# Temporary files
+*.swp
+*.tmp
