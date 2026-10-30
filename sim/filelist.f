@@ -8,6 +8,7 @@
 
 ../tb/axi4l_gpio_tb_cfg_pkg.sv
 ../tb/axi_agent/axi4l_if.sv
+../tb/axi_agent/axi4l_c2_timing_if.sv
 ../tb/gpio_agent/gpio_if.sv
 ../tb/axi_agent/axi4l_agent_types_pkg.sv
 ../tb/axi_agent/axi4l_v4_lifecycle_pkg.sv

@@ -12,7 +12,10 @@ package axi4l_env_pkg;
   `uvm_analysis_imp_decl(_axi_req)
   `uvm_analysis_imp_decl(_axi_rsp)
   `uvm_analysis_imp_decl(_gpio)
+  `uvm_analysis_imp_decl(_c2)
 
+  `include "axi4l_c2_event.sv"
+  `include "axi4l_c2_timing_monitor.sv"
   `include "axi4l_gpio_scoreboard.sv"
   `include "axi4l_gpio_env.sv"
 endpackage

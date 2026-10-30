@@ -10,8 +10,8 @@ The current environment is a strong verification-development milestone, not a fo
 |---|---|
 | AXI4-Lite master agent | Active/passive UVM agent；保留 legacy/limited/v3，并新增显式 v4 channel mode：bounded Dispatcher、独立 AW/W/AR workers、ordered B/R collectors、single Publisher 与 epoch reset |
 | GPIO agent | Active/passive stimulus and cycle-by-cycle observation |
-| Reference model | Cycle-tagged model for GPIO output, input synchronization, `CHANGED`, `MASK`, `INT`, and registered `o_int` behavior |
-| Checking | Request-acceptance prediction, read snapshots, ordered response matching, pin-level checking, reset flushing, and queue/credit audits |
+| Reference model | C2 independent cycle model for GPIO output, input synchronization, `CHANGED`, `MASK`, `INT`, and registered `o_int`; expected values never come from DUT internal data |
+| Checking | External AW/W/AR accepted queues, real internal commit/snapshot timing, ordered/qualified responses, pin checking, reset epochs, and orphan/duplicate/missing audits |
 | Assertions | AXI stability/response checks, reset checks, synchronizer checks, interrupt relation, W1C/sticky checks, and activation cover properties |
 | Functional coverage | AXI request shape plus observed GPIO edge/output/interrupt coverage; the implemented groups reached 100% in the recorded run |
 | Pipelining and stress | v4 受控 slave 实测 write/read depth 3、4、8；GPIO DUT 的 v3 depth-2/3 stress 仍只观察到最大 2，二者不混报 |
@@ -58,8 +58,10 @@ flowchart LR
     AXIF <--> DUT[axilgpio DUT]
     GPIOIF <--> DUT
     AXIF --> AXIM[AXI monitor]
+    AXIF --> C2M[C2 accepted-request tracker]
+    ADAPTER[Read-only commit/snapshot adapter] --> C2M
     GPIOIF --> GPIOM[GPIO monitor]
-    AXIM -->|accepted request events| SCB[Cycle-aware scoreboard]
+    C2M -->|commit/snapshot events + accepted payload| SCB[Cycle-aware scoreboard]
     AXIM -->|completed response events| SCB
     GPIOM -->|cycle samples| SCB
     AXIM --> COV[Functional coverage]
@@ -67,19 +69,23 @@ flowchart LR
     SVA[Bound SVA] --> DUT
 ```
 
-The AXI monitor deliberately separates request acceptance from response completion:
+The C2 path deliberately separates external acceptance, internal execution, and response completion:
 
-- paired AW/W or accepted AR events drive state prediction and read-data snapshots;
+- the tracker independently queues AW/W/AR handshakes and pairs the oldest AW with the oldest W;
+- only real `WRITE_COMMIT`/`READ_SNAPSHOT` events drive state prediction and read-data snapshots;
 - B/R completion events check response status, ordering, latency, and data;
 - the GPIO monitor supplies a common cycle reference for input, output, interrupt, and reset checking.
 
-This separation avoids predicting a write side effect at a delayed B handshake or comparing a read response against state that changed after AR acceptance.
+The adapter exposes only the two timing predicates, never DUT register/read data. A `+C2_BLACKBOX`
+fallback derives events at acceptance and retains end-to-end checking, but cannot make cycle-exact claims
+when B/R backpressure separates acceptance from commit/snapshot.
 
 ### Main components
 
 - `tb/axi_agent/`: reusable AXI4-Lite sequence item, sequencer, driver, monitor, interface, and agent.
 - `tb/gpio_agent/`: reusable GPIO stimulus and observation agent.
 - `tb/env/axi4l_gpio_scoreboard.sv`: cycle-aware reference model and ordered request/response checker.
+- `tb/env/axi4l_c2_timing_monitor.sv`: epoch-aware accepted tracker, event correlation, response eligibility, and orphan/duplicate/missing checks.
 - `tb/coverage/axi4l_gpio_coverage.sv`: accepted-transaction and observed-GPIO covergroups.
 - `tb/assertions/`: bound AXI, reset, synchronizer, W1C, and interrupt assertions/covers.
 - `tb/sequences/`: single-access, pipelined, mid-reset, and stress sequences.
@@ -97,6 +103,7 @@ This separation avoids predicting a write side effect at a delayed B handshake o
 - configurable pipelined driver credits and response queues;
 - no lost, duplicated, or late response in the v3 stress audit;
 - reset flushing of requests, pending responses, and credits.
+- current-epoch FIFO qualification for commit/snapshot and B/R, including orphan, duplicate, missing, and stale-event diagnostics.
 
 ### GPIO functionality
 
@@ -130,6 +137,8 @@ Digital simulation checks the synchronizer's sampled behavior only. It does not 
 | `axi4l_v4_response_order_test` | 受控 depth-4 slave；无 AXI ID 条件下的方向 FIFO response association |
 | `axi4l_v4_depth3_test` | 受控 depth-3 组件级边界运行 |
 | `axi4l_v4_reset_test` | AW-only、W-only、pending B/R、credit wait、normal-but-unpublished、exactly-once 与逐场景 recovery |
+| `axi4l_c2_timing_test` | Non-zero buffered SET/CLEAR/TOGGLE, B/R backpressure, delayed snapshot, intervening write, same-edge read/write, and reset while buffered |
+| `axi4l_c2_checker_selftest` | Isolated orphan/duplicate/missing/stale and response-qualification fault injection without expected-error regression pollution |
 
 The mid-reset test covers a partial write, pending B response, pending R response, mixed read/write activity, credit wait, and reset after completed B/R boundaries.
 
@@ -156,6 +165,7 @@ make v2_random
 make v3_pipelined
 make v3_mid_reset
 make v3_stress
+make v3_stress_depth3
 
 # v4 lifecycle + channel pipeline/component tests
 make v4_lifecycle_unit
@@ -164,7 +174,10 @@ make v4_response_order
 make v4_depth3
 make v4_reset
 
-# Existing regression plus B1 and four v4 component tests
+# C2 cycle-exact integration and isolated checker sensitivity tests
+make c2
+
+# Existing v2/v3/v4 plus C2 regression
 make regression
 
 # Instrumented seven-test coverage run and URG report
@@ -190,7 +203,7 @@ The generated coverage dashboard is `sim/coverage_report/dashboard.html`.
 
 The two Make targets are complementary:
 
-- `make regression` retains smoke, GPIO smoke, v2 directed/random, v3 pipelined, v3 mid-reset and v3 stress, then adds v4 lifecycle, depth-8 pipeline, depth-4 response-order, depth-3 and reset tests.
+- `make regression` runs 15 tests: smoke/GPIO smoke, v2 directed/random, v3 pipeline/reset/stress, five v4 lifecycle/component/reset tests, C2 timing, W1C collision, and the isolated checker self-test.
 - `make coverage` runs v2 directed, v2 random with seed 1, bit 3/4 closure, W1C collision, request-stall closure, and v3 stress at configured depths 2 and 3.
 
 ## Recorded coverage snapshot
@@ -252,6 +265,7 @@ The report does not embed a Git revision or a complete parameter matrix. Treat t
 | v3.1 reset robustness | Mid-transaction reset injection, queue/credit flushing, aborted-transaction handling, and six post-reset recovery checks |
 | v3.2 stress/closure milestone | Long depth-2/depth-3 runs, 104-request audit, simultaneous B/R stalls, snapshot-hold checking, deterministic W1C collision and request-stall closure tests, and the recorded URG merge |
 | v4.0-B2 channel pipeline | One-credit-per-request bounded dispatch, atomic AW/W commit, independent AW/W/AR workers, ordered B/R association, single terminal Publisher, epoch/reset barrier, and controlled-slave depth 3/4/8 proof |
+| v4.0-C2 cycle-exact checking | Minimal read-only timing adapter, accepted-request tracker, independent GPIO golden model, commit/snapshot-driven scoreboard, checker self-test, and real VCS regression |
 
 The “v3.2” name is a project milestone used to describe the current stress/reset/pipelining state; it is not presently a Git tag.
 
@@ -286,25 +300,25 @@ The “v3.2” name is a project milestone used to describe the current stress/r
 4. **Only the default DUT configuration is elaborated by `tb_top`.** `NIN/NOUT` boundaries, `NIN=0`, `OPT_SKIDBUFFER=0`, `OPT_LOWPOWER=1`, and alternate reset values still need an automated parameter matrix.
 5. **RAL is not implemented.** The plan describes alias, volatile, and W1C modeling, but `tb/ral/` is currently empty.
 6. **Stress depth 3 is configured but the present DUT run observes a maximum outstanding depth of 2.** This is still useful for credit and backpressure checking, but it is not evidence of three simultaneously accepted requests.
-7. **External bus acceptance is currently used as the functional prediction point.** This is correct for the exercised paths, but an externally accepted non-zero side-effect write buffered behind a stalled response may execute later inside the DUT. A future internal commit observation or dedicated buffered-side-effect test should close this microarchitectural timing gap.
+7. **Black-box fallback is intentionally weaker.** The default C2 path is cycle-exact white-box; `+C2_BLACKBOX` retains end-to-end checks but cannot distinguish acceptance from delayed commit/snapshot under B/R backpressure.
 8. **Coverage evidence needs stronger provenance.** The report should record the Git commit, seed, complete parameter set, mask semantic mode, and pass/fail manifest in a machine-readable regression summary.
 9. **Sign-off documents are not closed.** `docs/verification_report.md` remains a template, and plan/traceability statuses have not been updated to match all implemented tests.
-10. **Repository provenance is not yet versioned.** The new project intentionally has no Git history or remote; generated VCS artifacts remain local and should stay untracked if a repository is initialized later.
-11. **v4 negative-protocol coverage is incomplete.** Collectors reject and report B/R without an eligible head, but a deliberately non-compliant bad-slave test has not yet been added for that path.
+10. **Repository is local-only.** The B2 checkpoint/tag and local history exist, but there is intentionally no remote; generated VCS artifacts remain untracked and no push is performed.
+11. **C3 negative/coverage closure is incomplete.** C2 self-test proves checker sensitivity, but a broader deliberately non-compliant slave matrix and C2/v4 coverage merge remain future work.
 
 ## Roadmap
 
 - Resolve `SPEC-MASK-001` in writing and align RTL comments, checks, and documentation.
 - Expand functional coverage to the planned WSTRB/register, AW/W gap, backpressure, W1C, interrupt, reset-state, and occupancy crosses.
 - Add automated parameter regressions for `NIN`, `NOUT`, skid-buffer, low-power, and default-output configurations.
-- Observe the DUT's internal write-commit point, or add a bind-level commit event, for cycle-exact checking of buffered side-effect writes.
+- Add C2/v4 runs to a new coverage merge; do not reuse the historical seven-run URG snapshot as C2 closure.
 - Implement a UVM register model with explicit alias prediction and volatile/W1C handling.
 - Add more randomized seeds, reset-in-stress scenarios, and coverage-directed closure tests.
 - Add a bad-slave negative suite and a separate v4 component coverage merge.
 - Review code/assertion exclusions and close or justify uncovered legal behavior.
 - Generate a regression manifest containing commit, tool version, seed, parameters, test result, assertion summary, and coverage database name.
 - Complete the traceability matrix and final verification report, then define formal sign-off criteria.
-- If a repository is initialized later, keep simulator-generated artifacts untracked and add CI/lint automation where licensed tools are available.
+- Keep simulator-generated artifacts untracked and add CI/lint automation where licensed tools are available.
 
 ## Documentation
 
@@ -315,6 +329,8 @@ The “v3.2” name is a project milestone used to describe the current stress/r
 - `docs/issues_log.csv`: authoritative open-issue list.
 - `docs/version_explain.txt`: detailed v1 limitations and the architectural motivation for v2.
 - `docs/verification_report.md`: final-report template; not yet a completed sign-off report.
+- `docs/v4_c1_rtl_timing_analysis.md`: RTL timing and NBA sampling analysis.
+- `docs/v4_c2_timing_scoreboard.md`: C2 event contract, implementation, cycle evidence, regression results, and C3 boundary.
 
 ## Provenance and licensing
 

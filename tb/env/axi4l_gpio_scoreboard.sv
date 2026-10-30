@@ -12,21 +12,22 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
     bit [GPIO_NOUT-1:0] expected;       // Expected o_gpio value on that cycle.
   } gpio_expected_t;
 
-  // Three monitor streams enter the scoreboard through independent analysis
-  // implementations.  The AXI request stream drives the reference model, the
-  // AXI response stream supplies actual B/R results, and the GPIO stream is the
-  // cycle-by-cycle observation point for reset, inputs, o_gpio, and o_int.
+  // Four independent analysis inputs are retained.  C2 timing events drive the
+  // reference model; the legacy AXI request stream remains for compatibility
+  // and accounting, AXI responses supply actual B/R results, and GPIO samples
+  // are the cycle-by-cycle observation point for reset, pins, and interrupts.
   uvm_analysis_imp_axi_req #(axi4l_seq_item,
                              axi4l_gpio_scoreboard) axi_req_imp;
   uvm_analysis_imp_axi_rsp #(axi4l_seq_item,
                              axi4l_gpio_scoreboard) axi_rsp_imp;
   uvm_analysis_imp_gpio   #(gpio_observation,
                             axi4l_gpio_scoreboard) gpio_imp;
+  uvm_analysis_imp_c2     #(axi4l_c2_event,
+                            axi4l_gpio_scoreboard) c2_imp;
 
-  // Requests wait here until the GPIO sample for their acceptance cycle is
-  // processed.  This makes the sample cycle the single timing reference used
-  // to advance the model.
-  axi4l_seq_item request_events[$];
+  // Commit/snapshot events wait until the matching GPIO sample is processed.
+  // This makes one sample_cycle the timing reference used to advance the model.
+  axi4l_c2_event timing_events[$];
 
   // Expected queues are predictions made from accepted requests.  Pending
   // queues contain actual responses already observed by the AXI monitor.
@@ -60,6 +61,8 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
   bit [GPIO_NIN-1:0]         model_mask;
   bit                        model_int;
   bit                        in_reset;
+  bit                        selftest_mode;
+  int unsigned               accepted_observations;
 
   // Interrupt-mask polarity switch.  The implemented RTL uses MASK=1 to enable
   // an interrupt source.  Keeping the polarity configurable lets tests also
@@ -80,6 +83,7 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
     axi_req_imp = new("axi_req_imp", this);
     axi_rsp_imp = new("axi_rsp_imp", this);
     gpio_imp    = new("gpio_imp", this);
+    c2_imp      = new("c2_imp", this);
     clear_all_state();
   endfunction
 
@@ -87,6 +91,8 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
     super.build_phase(phase);
     void'(uvm_config_db#(bit)::get(this, "", "mask_one_enable",
                                    mask_one_enable));
+    void'(uvm_config_db#(bit)::get(this, "", "c2_selftest_mode",
+                                   selftest_mode));
   endfunction
 
   function void clear_model_state();
@@ -107,7 +113,7 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
     // Full scoreboard initialization: architectural state plus every queued
     // expected/actual item and the deferred GPIO observation.
     clear_model_state();
-    request_events.delete();
+    timing_events.delete();
     expected_write_responses.delete();
     expected_read_responses.delete();
     pending_write_responses.delete();
@@ -188,16 +194,31 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
 
   function void report_error(string id, string message);
     error_count++;
-    `uvm_error(id, message)
+    if (selftest_mode)
+      `uvm_info("C2_EXPECTED_SCB_FAULT", {id, ": ", message}, UVM_NONE)
+    else
+      `uvm_error(id, message)
   endfunction
 
   function void write_axi_req(axi4l_seq_item tr);
-    // Request monitor callback: clone because the producer may reuse its item.
-    // Modeling is deferred until the GPIO sample with matching accept_cycle.
-    axi4l_seq_item copy;
-    if (!$cast(copy, tr.clone()))
-      `uvm_fatal("SCB_CLONE", "Failed to clone AXI request event")
-    request_events.push_back(copy);
+    // Compatibility input retained for existing environments and coverage.
+    // C2 deliberately does not advance architectural state here: an external
+    // AW/W pair or AR handshake is not the DUT's commit/snapshot event.
+    accepted_observations++;
+  endfunction
+
+  function void write_c2(axi4l_c2_event event_item);
+    axi4l_c2_event copy;
+    axi4l_seq_item request_copy;
+    copy = axi4l_c2_event::type_id::create("scoreboard_c2_event");
+    copy.kind           = event_item.kind;
+    copy.epoch          = event_item.epoch;
+    copy.event_cycle    = event_item.event_cycle;
+    copy.whitebox_exact = event_item.whitebox_exact;
+    if (!$cast(request_copy, event_item.request.clone()))
+      `uvm_fatal("SCB_CLONE", "Failed to clone C2 timing request")
+    copy.request = request_copy;
+    timing_events.push_back(copy);
   endfunction
 
   function void write_axi_rsp(axi4l_seq_item tr);
@@ -218,8 +239,8 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
 
     // Defer each GPIO observation by one GPIO callback.  AXI and GPIO monitors
     // can publish same-cycle items in either simulator callback order; waiting
-    // for the following sample guarantees that all requests for this cycle have
-    // reached request_events before the sample is processed.  This is a
+    // for the following sample guarantees that all timing events for this cycle
+    // have reached timing_events before the sample is processed.  This is a
     // scoreboard scheduling device, NOT an extra cycle of DUT GPIO latency.
     if (have_delayed_gpio_sample)
       process_gpio_sample(delayed_gpio_sample);
@@ -235,11 +256,12 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
     // architectural reset values are restored before normal modeling resumes.
     clear_model_state();
 
-    // Preserve a request from the first post-reset cycle if that callback ran
-    // before this delayed processing of the final reset sample.
-    while ((request_events.size() != 0) &&
-           (request_events[0].accept_cycle <= reset_cycle))
-      void'(request_events.pop_front());
+    // Drop only events sampled in or before this reset cycle.  A callback from
+    // the first post-reset edge may already be queued because monitor callbacks
+    // are intentionally order-independent.
+    while ((timing_events.size() != 0) &&
+           (timing_events[0].event_cycle <= reset_cycle))
+      void'(timing_events.pop_front());
 
     expected_write_responses.delete();
     expected_read_responses.delete();
@@ -311,6 +333,7 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
     axi4l_seq_item cycle_reads[$];
     axi4l_seq_item cycle_writes[$];
     axi4l_seq_item request;
+    axi4l_c2_event timing_event;
     axi4l_seq_item expected_response;
     gpio_expected_t gpio_event;
     bit [AXI4L_DATA_WIDTH-1:0] next_gpio;
@@ -334,16 +357,19 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
     compare_current_pins(sample);
     check_due_gpio_events(sample);
 
-    // Consume only requests accepted on or before this sample.  A strictly
-    // older request means the deferral/order contract was violated.
-    while ((request_events.size() != 0) &&
-           (request_events[0].accept_cycle <= sample.sample_cycle)) begin
-      request = request_events.pop_front();
-      if (request.accept_cycle < sample.sample_cycle)
-        report_error("SCB_REQ_LATE",
-          $sformatf("request tx=%0d was not modeled at acceptance cycle %0d",
-                    request.transaction_id, request.accept_cycle));
-      if (request.access == AXI4L_READ)
+    // Consume internal execution events, not external acceptance.  The timing
+    // monitor derives payload exclusively from its independently accepted bus
+    // queues and supplies only the real WRITE_COMMIT/READ_SNAPSHOT cycle.
+    while ((timing_events.size() != 0) &&
+           (timing_events[0].event_cycle <= sample.sample_cycle)) begin
+      timing_event = timing_events.pop_front();
+      if (timing_event.event_cycle < sample.sample_cycle)
+        report_error("SCB_EVENT_LATE",
+          $sformatf("timing event request=%0d was not modeled at event cycle %0d",
+                    timing_event.request.transaction_id,
+                    timing_event.event_cycle));
+      request = timing_event.request;
+      if (timing_event.kind == AXI4L_C2_READ_SNAPSHOT)
         cycle_reads.push_back(request);
       else
         cycle_writes.push_back(request);
@@ -474,10 +500,10 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
     end
     match_responses();
 
-    if (request_events.size() != 0)
-      report_error("SCB_REQ_PENDING",
-        $sformatf("%0d accepted request event(s) were not modeled",
-                  request_events.size()));
+    if (timing_events.size() != 0)
+      report_error("SCB_EVENT_PENDING",
+        $sformatf("%0d C2 timing event(s) were not modeled",
+                  timing_events.size()));
     if (expected_write_responses.size() != 0 ||
         pending_write_responses.size() != 0)
       report_error("SCB_B_PENDING",
@@ -499,12 +525,21 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
     super.report_phase(phase);
     if (error_count == 0) begin
       `uvm_info("SCB_PASS",
-        $sformatf("V2 scoreboard PASS: output_writes=%0d reads=%0d responses=%0d pin_cycles=%0d gpio_events=%0d int_cycles=%0d",
+        $sformatf("C2 cycle-aware scoreboard PASS: accepted_observations=%0d output_commits=%0d snapshots=%0d responses=%0d pin_cycles=%0d gpio_events=%0d int_cycles=%0d",
+                  accepted_observations,
                   write_checks, read_checks, response_checks, gpio_checks,
                   gpio_event_checks, interrupt_checks), UVM_NONE)
+    end else if (selftest_mode) begin
+      `uvm_info("SCB_SELFTEST_ERRORS",
+        $sformatf("checker self-test intentionally detected %0d scoreboard consequence(s)",
+                  error_count), UVM_NONE)
+    end else if (selftest_mode) begin
+      `uvm_info("SCB_SELFTEST",
+        $sformatf("C2 checker self-test observed %0d expected scoreboard consequence(s)",
+                  error_count), UVM_NONE)
     end else begin
       `uvm_error("SCB_FAIL",
-        $sformatf("V2 scoreboard FAIL: errors=%0d output_writes=%0d reads=%0d responses=%0d",
+        $sformatf("C2 scoreboard FAIL: errors=%0d output_commits=%0d snapshots=%0d responses=%0d",
                   error_count, write_checks, read_checks, response_checks))
     end
   endfunction

@@ -64,6 +64,14 @@ module tb_top;
     .o_int        (o_int)
   );
 
+  // C2's minimal read-only white-box adapter exports only the two real
+  // execution predicates.  Expected address/data/state always comes from the
+  // independently observed and paired external AXI requests.
+  axi4l_c2_timing_if c2_timing_vif (.ACLK(clk));
+  assign c2_timing_vif.ARESETN      = axi_if.ARESETN;
+  assign c2_timing_vif.WRITE_COMMIT = dut.axil_write_ready;
+  assign c2_timing_vif.READ_SNAPSHOT= dut.axil_read_ready;
+
   axi4l_v4_test_slave #(
     .ADDR_WIDTH(ADDR_WIDTH),
     .DATA_WIDTH(DATA_WIDTH),
@@ -99,6 +107,9 @@ module tb_top;
   end
 
   initial begin
+    if ($test$plusargs("C2_BLACKBOX"))
+      uvm_config_db#(bit)::set(
+        null, "*", "c2_whitebox_enable", 1'b0);
     if ($test$plusargs("V4_TEST_SLAVE"))
       uvm_config_db#(virtual axi4l_if #(ADDR_WIDTH, DATA_WIDTH))::set(
         null, "*", "vif", v4_axi_if);
@@ -107,6 +118,8 @@ module tb_top;
         null, "*", "vif", axi_if);
     uvm_config_db#(virtual gpio_if #(NIN, NOUT))::set(
       null, "*", "gpio_vif", gpio_vif);
+    uvm_config_db#(virtual axi4l_c2_timing_if)::set(
+      null, "*", "timing_vif", c2_timing_vif);
     run_test();
   end
 

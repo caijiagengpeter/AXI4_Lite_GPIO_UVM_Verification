@@ -1,18 +1,22 @@
 # AXI4-Lite v4.0 架构规划与进度
 
-> 进度：2026-10-30 已完成 v4.0-B2.1～B2.3（bounded Dispatcher、独立
-> AW/W/AR workers、B/R collectors、single Publisher、epoch/reset barrier）并完成
-> 集成验证。下面保留最初规划作为设计背景；真实落地细节和证据以
-> [v4_driver_architecture.md](v4_driver_architecture.md) 第 16 节为准。
+> 进度：2026-10-30 已完成 v4.0-B2.1～B2.3、C1 RTL timing analysis 以及 C2
+> internal timing monitor/accepted tracker/独立 GPIO golden model/cycle-aware scoreboard，
+> 并完成真实 VCS 集成回归。C3 coverage closure 尚未开始。B2 真实落地细节和证据以
+> [v4_driver_architecture.md](v4_driver_architecture.md) 第 16 节为准，C1 结论见
+> [v4_c1_rtl_timing_analysis.md](v4_c1_rtl_timing_analysis.md)，C2 见
+> [v4_c2_timing_scoreboard.md](v4_c2_timing_scoreboard.md)。
 
 ## 本轮边界
 
 本目录以 `/home/ray/AXI4_Lite` 中当前可工作的 v3.2 工程为只读 baseline。v4 B2
-只在新工程实现；旧工程继续只读。Driver、lifecycle package、编译入口和 v4 专用
-testbench 已按授权修改/新增；Monitor、Scoreboard、Reference Model、DUT、GPIO SVA
-及旧 sequence/test 的业务逻辑未重写，旧测试类名保留。
+只在新工程实现；旧工程继续只读。C2 新增只读 timing adapter/tracker 并将 Scoreboard 的
+prediction point 从 external acceptance 切到真实 commit/snapshot；DUT、v4 Driver、既有
+SVA/test slave 未改，旧 monitor API、sequence/test 类名保留。
 
-新工程暂不执行 `git init`，不继承旧工程的 Git history/remote，也不创建或推送 GitHub 仓库。后续只有在用户明确批准后，才决定独立仓库的初始化方式。
+新工程已建立独立本地 Git checkpoint：`main` commit
+`e0e4a3001f9d533cc9d24e7695480926c8182cbb`，annotated tag
+`v4.0-b2-baseline`。不改写/移动该 tag，不重写历史，不创建 remote，也不 push GitHub。
 
 ## 详细设计索引
 
@@ -20,6 +24,22 @@ testbench 已按授权修改/新增；Monitor、Scoreboard、Reference Model、D
 - v4.0-B1 lifecycle 基础设施及单元测试见 Driver 架构文档第 15 节。
 - v4.0-B2.1～B2.3 已接入现有 Driver；配置、delay/reset 合约、3/4/8 深度证据、
   测试结果和限制见第 16 节。
+- [v4.0-C1 RTL Timing Analysis](v4_c1_rtl_timing_analysis.md)：external acceptance、
+  skid buffering、internal write commit/read snapshot、NBA/clocking-block 采样、register
+  semantics、逐周期表、现有 scoreboard 缺口及 C2 推荐分层。
+- [v4.0-C2 Timing Monitor and Scoreboard](v4_c2_timing_scoreboard.md)：event contract、
+  epoch/FIFO tracker、independent model、fault self-test、cycle evidence 与真实回归结果。
+
+## C1/C2 状态（2026-10-30）
+
+- 已完成只读 RTL/Monitor/Scoreboard/clocking block/SVA/B2 pipeline test 审查，并新增
+  `docs/v4_c1_rtl_timing_analysis.md`。
+- 精确确认 write commit 是 `axil_write_ready`，read snapshot 是
+  `axil_read_ready`；B/R backpressure 可使它们晚于 external AW/W/AR acceptance。
+- 最小 white-box timing adapter 已批准并实现；只暴露 commit/snapshot event，不暴露 DUT
+  internal expected data/state。
+- C2 accepted tracker、cycle-aware scoreboard、fault self-test 和 directed tests 已实现并通过
+  VCS；C3 coverage closure 明确保留到下一阶段。
 
 ## B2 交付摘要
 
@@ -37,10 +57,11 @@ testbench 已按授权修改/新增；Monitor、Scoreboard、Reference Model、D
 
 - `dut/rtl/`：当前验证对象及 skid buffer RTL，原样保留。
 - `original/zipcpu/`：上游参考 RTL，连同现有授权/版权声明原样保留。
-- `tb/gpio_agent/`、`tb/env/`、`tb/coverage/`、`tb/assertions/`、`tb/sequences/`、`tb/ral/`：新工程继续沿用 v3.2 内容；本阶段没有为 v4 重写这些模块。
-- `tb/axi_agent/`、顶层 interface/`tb_top.sv`：保留旧模式/API，同时增加 v4 lifecycle、driver channel engine、测试 slave 选择和只读测试指标。
-- `tb/tests/`：旧测试类名和语义保留，并增加 v4 directed tests。
-- `sim/Makefile`、`sim/filelist.f`：沿用相对路径构建方式，最小增加 v4 编译顺序和测试入口；旧 target 未删减。
+- `tb/gpio_agent/`、`tb/coverage/`、`tb/assertions/`、`tb/sequences/`、`tb/ral/`：继续沿用 v3.2 行为；C2 未删除或弱化旧 checker/SVA。
+- `tb/env/`：C2 新增 event/tracker，并把原 scoreboard prediction point 改为 internal commit/snapshot，class/API 与独立 GPIO model 保持兼容。
+- `tb/axi_agent/`、顶层 interface/`tb_top.sv`：保留旧模式/API，同时增加 v4 lifecycle、driver channel engine、测试 slave 选择和最小只读 C2 timing adapter。
+- `tb/tests/`：旧测试类名和语义保留，并增加 v4/C2 directed tests 与隔离 fault self-test。
+- `sim/Makefile`、`sim/filelist.f`：沿用相对路径构建方式，增加 v4/C2 编译顺序和测试入口；旧 target 未删减。
 - `docs/`、`README.md`、`.gitignore`：保留既有设计/验证背景与工程约定。
 
 “可复用”表示它们是 v4.0 的稳定起点，不表示所有模块已经具备最终的通用并发能力。
@@ -58,7 +79,7 @@ testbench 已按授权修改/新增；Monitor、Scoreboard、Reference Model、D
 - 为所有 channel worker、queue、credit 和 response waiter 定义一致的 reset/abort 语义。
 - 明确 reset 中已接受、已缓冲、尚未执行和等待响应的事务如何清空、标记或结束，防止跨 reset 的陈旧响应。
 
-### 3. Monitor、Scoreboard 与 Reference Model（后续阶段）
+### 3. Monitor、Scoreboard 与 Reference Model（C2 已完成）
 
 - Monitor 独立观察各 channel handshake，再按协议规则恢复读写事务；不要依赖 Driver 的内部调度顺序。
 - Scoreboard/Reference Model 明确区分：
@@ -66,9 +87,9 @@ testbench 已按授权修改/新增；Monitor、Scoreboard、Reference Model、D
   - DUT 内部可能仍在 buffer 中等待执行的请求；
   - 真正产生寄存器副作用的执行时点；
   - read response 对应的 read snapshot 时点。
-- 先共同确定 observation/event 数据模型，再决定 Scoreboard 与 Reference Model 的职责边界和实现形式。
+- event 数据模型、Scoreboard/Reference Model 职责边界及 black-box fallback 已落地，详见 C2 文档。
 
-### 4. SVA 与 Coverage（保留既有，负向/v4 coverage 待扩展）
+### 4. SVA 与 Coverage（SVA 保留，C3 coverage 待扩展）
 
 - 保留现有 SVA 与 coverage，不以删断言、缩小采样或放宽检查换取通过。
 - 在现有基础上扩展 channel 独立 backpressure、AW/W 不同到达顺序、response ordering、bounded outstanding、reset/abort 及跨事务场景覆盖。
@@ -86,11 +107,9 @@ testbench 已按授权修改/新增；Monitor、Scoreboard、Reference Model、D
 通用 BFM 的深度验证已经使用可配置 `axi4l_v4_test_slave` 完成 3/4/8 runs；该结果
 与当前 GPIO DUT 的集成验证分开报告。GPIO DUT 本身的 outstanding 限制结论不变。
 
-## 后续建议顺序
+## C3 后续建议顺序
 
-1. 增加 bad-slave 负向测试，直接覆盖 B/R 没有 eligible head 的 protocol error path。
-2. 将 v4 组件测试纳入独立 coverage merge，并增加更丰富 stall/reset 随机矩阵。
-3. 确定 Monitor 事件、Scoreboard/Reference Model 的 acceptance/commit 分层及 read
-   snapshot 语义。
-4. 在不改变 GPIO 黑盒回归的前提下，再评审可选 white-box commit observation。
+1. 将 C2/v4 组件测试纳入独立 coverage merge，并增加更丰富 stall/reset/negative 矩阵。
+2. 扩展 deliberately bad-slave、orphan/duplicate snapshot 与 response-qualification 负向测试。
+3. 建立参数矩阵、RAL、machine-readable regression manifest 和 traceability/sign-off closure。
 
