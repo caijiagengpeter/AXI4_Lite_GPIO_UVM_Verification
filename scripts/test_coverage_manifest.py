@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -59,6 +60,29 @@ def clean_log(path: Path, extra: str = "") -> None:
 
 
 class CoverageManifestTests(unittest.TestCase):
+    def test_overlay_plan_appends_runs_without_changing_base(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            base = base_plan()
+            (root / "base.json").write_text(json.dumps(base), encoding="utf-8")
+            added = copy.deepcopy(base["runs"][0])
+            added.update({"id": "closure_seed21", "seed": 21})
+            overlay = {
+                "extends": "base.json",
+                "phase": "AXI4-Lite v4.0-C3.2",
+                "runs": [added],
+            }
+            (root / "overlay.json").write_text(
+                json.dumps(overlay), encoding="utf-8"
+            )
+            resolved = cm.read_plan(root / "overlay.json")
+            self.assertEqual(resolved["phase"], "AXI4-Lite v4.0-C3.2")
+            self.assertEqual(
+                [run["id"] for run in resolved["runs"]],
+                ["normal_seed1", "closure_seed21"],
+            )
+            self.assertEqual(len(cm.read_plan(root / "base.json")["runs"]), 1)
+
     def test_missing_db_is_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

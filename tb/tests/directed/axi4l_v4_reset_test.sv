@@ -82,11 +82,19 @@ endclass
 
 class axi4l_v4_reset_test extends axi4l_v4_agent_test_base;
   `uvm_component_utils(axi4l_v4_reset_test)
+  int unsigned observed_max_write_outstanding;
+  int unsigned observed_max_read_outstanding;
   function new(string name = "axi4l_v4_reset_test", uvm_component parent = null);
     super.new(name, parent); configured_depth = 2;
   endfunction
 
-  task automatic pulse_reset(string scenario_name);
+  task automatic pulse_reset(string scenario_name,
+                             axi4l_v4_reset_scenario_e observed_context);
+    sample_v4_reset_context(observed_context);
+    if (vif.test_max_write_outstanding > observed_max_write_outstanding)
+      observed_max_write_outstanding = vif.test_max_write_outstanding;
+    if (vif.test_max_read_outstanding > observed_max_read_outstanding)
+      observed_max_read_outstanding = vif.test_max_read_outstanding;
     vif.ARESETN <= 1'b0;
     repeat (2) @(vif.mon_cb);
     if (vif.mon_cb.ARESETN !== 1'b0)
@@ -108,28 +116,28 @@ class axi4l_v4_reset_test extends axi4l_v4_agent_test_base;
         forever begin
           @(vif.mon_cb);
           if (vif.mon_cb.AWVALID && vif.mon_cb.AWREADY && !vif.mon_cb.WVALID) begin
-            pulse_reset("aw_only"); return;
+            pulse_reset("aw_only", scenario); return;
           end
         end
       V4_RESET_W_ONLY:
         forever begin
           @(vif.mon_cb);
           if (vif.mon_cb.WVALID && vif.mon_cb.WREADY && !vif.mon_cb.AWVALID) begin
-            pulse_reset("w_only"); return;
+            pulse_reset("w_only", scenario); return;
           end
         end
       V4_RESET_PENDING_B:
         forever begin
           @(vif.mon_cb);
           if (vif.mon_cb.BVALID && !vif.mon_cb.BREADY) begin
-            pulse_reset("pending_b"); return;
+            pulse_reset("pending_b", scenario); return;
           end
         end
       V4_RESET_PENDING_R:
         forever begin
           @(vif.mon_cb);
           if (vif.mon_cb.RVALID && !vif.mon_cb.RREADY) begin
-            pulse_reset("pending_r"); return;
+            pulse_reset("pending_r", scenario); return;
           end
         end
       V4_RESET_CREDIT_WAIT: begin
@@ -143,14 +151,14 @@ class axi4l_v4_reset_test extends axi4l_v4_agent_test_base;
             registry_count, terminal_depth);
           if ((wo == 2) && (wa == 0) &&
               (agent.sequencer.get_current_item() != null)) begin
-            pulse_reset("credit_wait");
+            pulse_reset("credit_wait", scenario);
             return;
           end
         end
       end
       V4_RESET_NORMAL_UNPUBLISHED: begin
         wait (agent.driver.v4_b_handshake_count > b_before);
-        pulse_reset("normal_unpublished");
+        pulse_reset("normal_unpublished", scenario);
         agent.driver.v4_publisher_hold = 1'b0;
       end
       default: ;
@@ -192,6 +200,7 @@ class axi4l_v4_reset_test extends axi4l_v4_agent_test_base;
     seq.base_id = 2000 + (index * 10);
     seq.start(agent.sequencer);
     agent.driver.wait_for_v4_idle();
+    sample_v4_reset_context(V4_RESET_RECOVERY);
   endtask
 
   task run_phase(uvm_phase phase);
@@ -203,6 +212,15 @@ class axi4l_v4_reset_test extends axi4l_v4_agent_test_base;
     run_one(V4_RESET_PENDING_R,           4); run_recovery(4);
     run_one(V4_RESET_CREDIT_WAIT,         5); run_recovery(5);
     run_one(V4_RESET_NORMAL_UNPUBLISHED,  6); run_recovery(6);
+    if (vif.test_max_write_outstanding > observed_max_write_outstanding)
+      observed_max_write_outstanding = vif.test_max_write_outstanding;
+    if (vif.test_max_read_outstanding > observed_max_read_outstanding)
+      observed_max_read_outstanding = vif.test_max_read_outstanding;
+    v4_depth_order_cg.sample(observed_max_write_outstanding,
+                             observed_max_read_outstanding, 1'b1, 1'b1);
+    `uvm_info("V4_RESET_DEPTH_PROOF",
+      $sformatf("controlled slave reset scenarios observed max outstanding write=%0d read=%0d",
+        observed_max_write_outstanding, observed_max_read_outstanding), UVM_NONE)
     `uvm_info("V4_RESET_PASS",
       "AW-only/W-only/pending B/pending R/credit wait/normal-unpublished and recovery completed",
       UVM_NONE)

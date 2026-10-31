@@ -4,6 +4,7 @@ csrc/
 *.vdb/
 coverage_report/
 /sim/c3_1_coverage*/
+/sim/c3_2_*/
 DVEfiles/
 *.fsdb
 *.vcd

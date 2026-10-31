@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.11
-"""C3.1 regression/coverage manifest runner."""
+"""Reproducible AXI4-Lite regression/coverage manifest runner."""
 
 from __future__ import annotations
 
@@ -28,6 +28,27 @@ def now_iso() -> str:
 def read_json(path: Path) -> dict[str, Any]:
     with path.open(encoding="utf-8") as stream:
         return json.load(stream)
+
+
+def read_plan(path: Path) -> dict[str, Any]:
+    """Read a plan, optionally extending a base plan without mutating it."""
+    raw = read_json(path)
+    extends = raw.pop("extends", None)
+    if extends is None:
+        return raw
+    base_path = (path.parent / extends).resolve()
+    if base_path == path.resolve():
+        raise ValueError(f"plan cannot extend itself: {path}")
+    merged = json.loads(json.dumps(read_plan(base_path)))
+    for key, value in raw.items():
+        if key == "runs":
+            merged.setdefault("runs", []).extend(value)
+        elif key in ("builds", "merge_groups", "source_inventory"):
+            merged.setdefault(key, {}).update(value)
+        else:
+            merged[key] = value
+    merged["resolved_extends"] = str(base_path)
+    return merged
 
 
 def write_json(path: Path, data: Any) -> None:
@@ -247,7 +268,7 @@ def make_manifest(
 ) -> dict[str, Any]:
     repo_root = plan_path.resolve().parent.parent
     return {
-        "schema_version": SCHEMA_VERSION, "phase": "AXI4-Lite v4.0-C3.1",
+        "schema_version": SCHEMA_VERSION, "phase": plan.get("phase", "AXI4-Lite coverage"),
         "plan_path": str(plan_path.resolve()), "generated_at": now_iso(),
         "git": {
             "commit": git_value(repo_root, ["rev-parse", "HEAD"]),
@@ -377,7 +398,7 @@ def select_runs(plan: dict[str, Any], sets: set[str] | None) -> set[str]:
 
 def write_overview(path: Path, manifest: dict[str, Any], plan: dict[str, Any]) -> None:
     lines = [
-        "# AXI4-Lite v4.0-C3.1 Coverage Overview", "",
+        f"# {plan.get('phase', 'AXI4-Lite')} Coverage Overview", "",
         f"- 生成时间：{manifest['generated_at']}",
         f"- Git：{manifest['git']['describe']} ({manifest['git']['commit']})",
         f"- 工具：{manifest.get('tool', 'not run')}",
@@ -426,23 +447,27 @@ def write_overview(path: Path, manifest: dict[str, Any], plan: dict[str, Any]) -
         "- FSM 的 N/A 表示 URG 没有可评分 FSM 对象，不得解释为 0% 或 100%。",
         "- v4_controlled_slave 证明 v4 BFM/controlled slave，不是 GPIO DUT RTL coverage。",
         "- checker_selftest PASS 表示受控 fault injection 被检出且未污染正常回归。",
-        "- Functional group 只代表当前两个 covergroup，不代表 coverage plan 已闭合。",
+        "- Functional group 只代表当前被计分的 covergroups，不代表全部规格已 sign-off。",
     ])
     for group_name, merge in manifest["merge_results"].items():
         low = merge.get("report_metrics", {}).get("low_coverage_modules", [])
         if low:
             summary = ", ".join(f"{item['module']}={item['score']:.2f}%" for item in low)
             lines.append(f"- {group_name} 低于 90% 的模块定义总分：{summary}。")
-    lines.extend([
-        "- C3.1 只建立采集、manifest、分组、合并和报告；未新增 bin/test/waiver。",
-        "- C3.2 功能覆盖收敛、C3.3 参数/负向扩展、C3.4 sign-off 均未开始。", "",
-    ])
+    if plan.get("report_notes"):
+        lines.extend(f"- {note}" for note in plan["report_notes"])
+        lines.append("")
+    else:
+        lines.extend([
+            "- C3.1 只建立采集、manifest、分组、合并和报告；未新增 bin/test/waiver。",
+            "- C3.2 功能覆盖收敛、C3.3 参数/负向扩展、C3.4 sign-off 均未开始。", "",
+        ])
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
 
 def execute(plan_path: Path, output_root: Path, selected_sets: set[str]) -> int:
-    plan = read_json(plan_path)
+    plan = read_plan(plan_path)
     errors, warnings = validate_plan(plan)
     if errors:
         for error in errors:
@@ -594,7 +619,7 @@ def execute(plan_path: Path, output_root: Path, selected_sets: set[str]) -> int:
 
 
 def plan_only(plan_path: Path, output_path: Path) -> int:
-    plan = read_json(plan_path)
+    plan = read_plan(plan_path)
     errors, warnings = validate_plan(plan)
     if errors:
         for error in errors:
@@ -624,7 +649,7 @@ def main() -> int:
     run_parser.add_argument("--sets", default="all")
     args = parser.parse_args()
     if args.command == "validate":
-        errors, warnings = validate_plan(read_json(args.plan))
+        errors, warnings = validate_plan(read_plan(args.plan))
         for warning in warnings:
             print(f"WARNING: {warning}")
         for error in errors:

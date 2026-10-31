@@ -16,6 +16,7 @@ class axi4l_c2_timing_monitor extends uvm_monitor;
   virtual axi4l_if #(AXI4L_ADDR_WIDTH, AXI4L_DATA_WIDTH) vif;
   virtual axi4l_c2_timing_if timing_vif;
   uvm_analysis_port #(axi4l_c2_event) event_ap;
+  uvm_analysis_port #(axi4l_timing_observation) coverage_event_ap;
 
   aw_sample_t aw_q[$];
   w_sample_t  w_q[$];
@@ -83,6 +84,7 @@ class axi4l_c2_timing_monitor extends uvm_monitor;
                uvm_component parent = null);
     super.new(name, parent);
     event_ap = new("event_ap", this);
+    coverage_event_ap = new("coverage_event_ap", this);
   endfunction
 
   function void build_phase(uvm_phase phase);
@@ -143,6 +145,7 @@ class axi4l_c2_timing_monitor extends uvm_monitor;
                               longint unsigned epoch,
                               longint unsigned event_cycle);
     axi4l_c2_event event_item;
+    axi4l_timing_observation coverage_item;
     event_item = axi4l_c2_event::type_id::create("c2_event");
     event_item.kind           = kind;
     event_item.request        = clone_request(request, "timing request");
@@ -150,6 +153,14 @@ class axi4l_c2_timing_monitor extends uvm_monitor;
     event_item.event_cycle    = event_cycle;
     event_item.whitebox_exact = whitebox_enable;
     event_ap.write(event_item);
+    coverage_item = axi4l_timing_observation::type_id::create(
+      "c3_timing_observation");
+    coverage_item.is_write_commit = kind == AXI4L_C2_WRITE_COMMIT;
+    coverage_item.request = clone_request(request, "coverage timing request");
+    coverage_item.epoch = epoch;
+    coverage_item.event_cycle = event_cycle;
+    coverage_item.whitebox_exact = whitebox_enable;
+    coverage_event_ap.write(coverage_item);
   endfunction
 
   function void handle_write_commit(longint unsigned event_cycle);

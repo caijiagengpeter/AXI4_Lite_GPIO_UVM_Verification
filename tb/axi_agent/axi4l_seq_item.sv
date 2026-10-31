@@ -33,6 +33,10 @@ class axi4l_seq_item extends uvm_sequence_item;
   longint unsigned                       response_cycle;
   longint unsigned                       aw_cycle;
   longint unsigned                       w_cycle;
+  // Filled by the passive monitor from observed B/R backpressure.
+  int unsigned                           response_stall_cycles;
+  int unsigned                           outstanding_at_accept;
+  int unsigned                           outstanding_highwater;
 
   constraint reasonable_delay_c {
     aw_delay     inside {[0:20]};
@@ -61,6 +65,9 @@ class axi4l_seq_item extends uvm_sequence_item;
     `uvm_field_int(response_cycle, UVM_DEC | UVM_NOCOMPARE)
     `uvm_field_int(aw_cycle,       UVM_DEC | UVM_NOCOMPARE)
     `uvm_field_int(w_cycle,        UVM_DEC | UVM_NOCOMPARE)
+    `uvm_field_int(response_stall_cycles, UVM_DEC | UVM_NOCOMPARE)
+    `uvm_field_int(outstanding_at_accept, UVM_DEC | UVM_NOCOMPARE)
+    `uvm_field_int(outstanding_highwater, UVM_DEC | UVM_NOCOMPARE)
   `uvm_object_utils_end
 
   function new(string name = "axi4l_seq_item");

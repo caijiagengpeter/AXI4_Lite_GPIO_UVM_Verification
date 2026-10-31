@@ -6,6 +6,8 @@ class axi4l_v4_pipeline_seq extends uvm_sequence #(axi4l_seq_item);
   axi4l_seq_item read_req[$];
   axi4l_seq_item write_rsp[$];
   axi4l_seq_item read_rsp[$];
+  bit write_order_observed = 1'b1;
+  bit read_order_observed = 1'b1;
 
   function new(string name = "axi4l_v4_pipeline_seq"); super.new(name); endfunction
 
@@ -66,8 +68,10 @@ class axi4l_v4_pipeline_seq extends uvm_sequence #(axi4l_seq_item);
       if ((rsp.addr != write_req[i].addr) || (rsp.data != write_req[i].data) ||
           (rsp.get_sequence_id() != write_req[i].get_sequence_id()))
         `uvm_error("V4_WRITE_ASSOC", $sformatf("write[%0d] ID/payload mismatch", i))
-      if ((i != 0) && (rsp.response_cycle <= write_rsp[i-1].response_cycle))
+      if ((i != 0) && (rsp.response_cycle <= write_rsp[i-1].response_cycle)) begin
+        write_order_observed = 1'b0;
         `uvm_error("V4_WRITE_ORDER", "B responses were not published in direction order")
+      end
     end
 
     for (int i = 0; i < num_per_direction; i++) begin
@@ -79,8 +83,10 @@ class axi4l_v4_pipeline_seq extends uvm_sequence #(axi4l_seq_item);
       if (rsp.rdata !== ({{(AXI4L_DATA_WIDTH-AXI4L_ADDR_WIDTH){1'b0}}, rsp.addr}
                          ^ 32'h5a5a_1000))
         `uvm_error("V4_READ_DATA", $sformatf("read[%0d] data mismatch", i))
-      if ((i != 0) && (rsp.response_cycle <= read_rsp[i-1].response_cycle))
+      if ((i != 0) && (rsp.response_cycle <= read_rsp[i-1].response_cycle)) begin
+        read_order_observed = 1'b0;
         `uvm_error("V4_READ_ORDER", "R responses were not published in direction order")
+      end
     end
 
     if (num_per_direction >= 3) begin
@@ -106,8 +112,45 @@ class axi4l_v4_agent_test_base extends uvm_test;
   virtual axi4l_if #(AXI4L_ADDR_WIDTH, AXI4L_DATA_WIDTH) vif;
   int unsigned configured_depth = 8;
 
+  covergroup v4_depth_order_cg with function sample(
+    int write_highwater, int read_highwater,
+    bit write_ordered, bit read_ordered
+  );
+    option.per_instance = 1;
+    cp_write_highwater: coverpoint write_highwater {
+      bins depth2 = {2}; bins depth3 = {3}; bins depth4 = {4}; bins depth8 = {8};
+    }
+    cp_read_highwater: coverpoint read_highwater {
+      bins depth2 = {2}; bins depth3 = {3}; bins depth4 = {4}; bins depth8 = {8};
+    }
+    cp_write_order: coverpoint write_ordered { bins ordered = {1}; }
+    cp_read_order: coverpoint read_ordered { bins ordered = {1}; }
+  endgroup
+
+  covergroup v4_reset_context_cg with function sample(int scenario);
+    option.per_instance = 1;
+    cp_context: coverpoint scenario {
+      bins aw_only = {0}; bins w_only = {1}; bins pending_b = {2};
+      bins pending_r = {3}; bins credit_wait = {4};
+      bins normal_before_publication = {5}; bins recovery = {6};
+    }
+  endgroup
+
   function new(string name = "axi4l_v4_agent_test_base", uvm_component parent = null);
     super.new(name, parent);
+    v4_depth_order_cg = new;
+    v4_reset_context_cg = new;
+  endfunction
+
+  function void sample_v4_depth_order(bit write_ordered,
+                                      bit read_ordered);
+    v4_depth_order_cg.sample(vif.test_max_write_outstanding,
+                             vif.test_max_read_outstanding,
+                             write_ordered, read_ordered);
+  endfunction
+
+  function void sample_v4_reset_context(int scenario);
+    v4_reset_context_cg.sample(scenario);
   endfunction
 
   function void build_phase(uvm_phase phase);
@@ -203,6 +246,7 @@ class axi4l_v4_channel_pipeline_test extends axi4l_v4_agent_test_base;
       $sformatf("controlled slave actual max outstanding write=%0d read=%0d stalls=%0d",
                 vif.test_max_write_outstanding,
                 vif.test_max_read_outstanding, stalls), UVM_NONE)
+    sample_v4_depth_order(seq.write_order_observed, seq.read_order_observed);
     phase.drop_objection(this);
   endtask
 endclass
@@ -226,6 +270,7 @@ class axi4l_v4_response_order_test extends axi4l_v4_agent_test_base;
     if ((vif.test_max_write_outstanding < 4) ||
         (vif.test_max_read_outstanding < 4))
       `uvm_error("V4_DEPTH4_PROOF", "controlled slave did not reach actual 4/4 depth")
+    sample_v4_depth_order(seq.write_order_observed, seq.read_order_observed);
     phase.drop_objection(this);
   endtask
 endclass
@@ -246,6 +291,7 @@ class axi4l_v4_depth3_test extends axi4l_v4_agent_test_base;
     if ((vif.test_max_write_outstanding < 3) ||
         (vif.test_max_read_outstanding < 3))
       `uvm_error("V4_DEPTH3_PROOF", "controlled slave did not reach actual 3/3 depth")
+    sample_v4_depth_order(seq.write_order_observed, seq.read_order_observed);
     phase.drop_objection(this);
   endtask
 endclass

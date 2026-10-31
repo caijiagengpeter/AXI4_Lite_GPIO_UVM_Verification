@@ -2,9 +2,10 @@ AXI4-Lite GPIO Functional Coverage Plan
 =======================================
 
 Baseline: docs/verification_plan.txt v1.0, Section 14
-C3.1 state: collection/manifest/compatible URG grouping is implemented and
-recorded in docs/v4_c3_1_coverage_infrastructure.md. The planned functional
-items below remain PLANNED until C3.2 implements and reviews their bins.
+C3.2 state: observed-event covergroups, three closure tests, overlay manifest,
+and compatible URG grouping are implemented and recorded in
+docs/v4_c3_2_functional_coverage.md. Status below distinguishes closed default
+configuration intent from partial or specification-blocked items.
 
 Field definitions
 -----------------
@@ -32,7 +33,7 @@ Feature/Requirement: REQ-AXI-003 - AW/W independence
 Coverpoint/Cross: AW/W acceptance order; register x AW/W order
 Bins/Intent: same-cycle, AW-first, W-first; separation 0, 1, 2-5, 6+ cycles
 Goal: 100% of reachable critical bins
-Status: PLANNED
+Status: IMPLEMENTED_CLOSED_DEFAULT
 Notes: Sample handshakes, not merely VALID assertion times.
 
 Coverage ID: COV-AXI-002
@@ -41,7 +42,7 @@ Coverpoint/Cross: WSTRB value; register x WSTRB
 Bins/Intent: all 16 values, including 0000, single-byte, multi-byte, alternating,
              and 1111 patterns
 Goal: 100% of reachable critical bins
-Status: PLANNED
+Status: IMPLEMENTED_CLOSED_DEFAULT
 Notes: Cover writable output, MASK, and CHANGED/W1C behavior as applicable.
 
 Coverage ID: COV-AXI-003
@@ -49,7 +50,7 @@ Feature/Requirement: REQ-AXI-002 - backpressure and stable payload
 Coverpoint/Cross: RREADY/BREADY stall length; read/write x stall bucket
 Bins/Intent: 0, 1, 2-5, and 6+ cycles for both response channels
 Goal: 100% of planned bins
-Status: PLANNED
+Status: IMPLEMENTED_CLOSED_DEFAULT
 Notes: A stall ends on handshake; reset-aborted cases are tracked separately.
 
 Coverage ID: COV-AXI-004
@@ -58,7 +59,7 @@ Coverpoint/Cross: channel occupancy; outstanding mode x channel x occupancy
 Bins/Intent: single item, multiple queued items, back-to-back/pipelined AW, W,
              and AR acceptance
 Goal: 100% of reachable critical bins
-Status: PLANNED
+Status: IMPLEMENTED_CLOSED_STALL_BUCKETS
 Notes: Occupancy is measured from accepted handshakes and ordered queues.
 
 Coverage ID: COV-REG-001
@@ -67,7 +68,7 @@ Coverpoint/Cross: register address; access type x register
 Bins/Intent: all eight word addresses plus defined unaligned aliases; read/write
              accesses where meaningful
 Goal: 100% of reachable register bins
-Status: PLANNED
+Status: IMPLEMENTED_PARTIAL
 Notes: Do not mark intentional alias behavior illegal.
 
 Coverage ID: COV-GPIO-001
@@ -76,7 +77,7 @@ Coverpoint/Cross: operation x data-pattern category x WSTRB category
 Bins/Intent: LOAD, SET, CLEAR, TOGGLE; each changes and does not change a target
              bit; strobed update and unstrobed preservation
 Goal: 100% of reachable critical bins
-Status: PLANNED
+Status: IMPLEMENTED_PARTIAL
 Notes: Ignore bit indices outside configured NOUT.
 
 Coverage ID: COV-GPIO-002
@@ -84,7 +85,7 @@ Feature/Requirement: REQ-CDC-001 and REQ-GPIO-008 - GPIO edges/change detection
 Coverpoint/Cross: input edge direction x implemented bit index
 Bins/Intent: rise, fall, single-bit, multi-bit, status-clear, status-already-set
 Goal: 100% of reachable critical bins
-Status: PLANNED
+Status: IMPLEMENTED_PARTIAL
 Notes: Ignore input-related bins when NIN=0.
 
 Coverage ID: COV-GPIO-003
@@ -93,7 +94,7 @@ Coverpoint/Cross: W1C data x byte strobe x concurrent new change x result
 Bins/Intent: data 0/1, strobe off/on, clear alone, change alone, same-bit
              clear+change with change winning
 Goal: 100% of reachable critical bins
-Status: PLANNED
+Status: IMPLEMENTED_CLOSED_DEFAULT
 Notes: Sample the post-update sticky state.
 
 Coverage ID: COV-INT-001
@@ -103,7 +104,7 @@ Coverpoint/Cross: MASK value x CHANGED value x INT result; active-bit count x
 Bins/Intent: controlling value 0/1, status 0/1, one/multiple active bits,
              o_int assert/hold/deassert
 Goal: 100% of reachable critical bins after polarity resolution
-Status: PLANNED
+Status: IMPLEMENTED_PARTIAL
 Notes: Record the selected polarity mode. Coverage does not resolve the open
        specification conflict.
 
@@ -113,7 +114,7 @@ Coverpoint/Cross: reset phase x outstanding channel state
 Bins/Intent: idle, AW pending, W pending, B stalled, AR pending, R stalled;
              first valid post-reset access
 Goal: 100% of planned bins
-Status: PLANNED
+Status: CHARACTERIZED_OPEN_SPEC
 Notes: Use sampled reset semantics; reset-aborted traffic must not be counted as
        a normal completed transaction.
 
@@ -123,5 +124,7 @@ The frozen plan's initial target is at least 95% overall functional coverage
 and 100% on reachable critical register, WSTRB, AW/W-ordering, W1C, and
 interrupt-polarity bins. Any exclusion, unreachable bin, or goal adjustment
 requires review and a recorded rationale. C3.1 provides reproducible actual
-collection and grouping; coverage-plan closure remains TBD for C3.2-C3.4.
+collection and grouping. C3.2 reaches 99.56% on the default GPIO functional
+coverage object while retaining the unreachable zero-cycle response-completion
+bin and documenting partial plan items. C3.3/C3.4 remain open.
 

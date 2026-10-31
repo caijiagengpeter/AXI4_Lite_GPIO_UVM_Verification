@@ -26,6 +26,7 @@ package axi4l_test_pkg;
   `include "directed/axi4l_v4_reset_test.sv"
   `include "directed/axi4l_c2_tests.sv"
   `include "directed/axi4l_gpio_v2_directed_test.sv"
+  `include "directed/axi4l_c3_2_coverage_test.sv"
   `include "random/axi4l_gpio_v2_random_test.sv"
 endpackage
 

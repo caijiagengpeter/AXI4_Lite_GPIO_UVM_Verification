@@ -1,0 +1,53 @@
+{
+  "extends": "c3_1_coverage_plan.json",
+  "phase": "AXI4-Lite v4.0-C3.2",
+  "description": "C3.1 reproducible baseline plus requirement-traced functional coverage closure traffic.",
+  "source_inventory": {
+    "c3_2_gpio_closure": "Observed-handshake coverage for all 16 WSTRB patterns across six legal writable registers, AW/W gap classes, response backpressure, commit/snapshot latency, reset, W1C collision, MASK/IRQ, and GPIO DUT occupancy."
+  },
+  "report_notes": [
+    "C3.2 adds requirement-traced bins sampled from passive handshakes, real C2 commit/read-snapshot events, reset edges, observed GPIO pins, and response completion; sequence intent alone is not sampled.",
+    "The C3.2 closure row uses seed 21 and keeps non-zero WDATA when WSTRB=0000 so preservation is checked rather than sidestepped.",
+    "Controlled-slave depth/order and lifecycle/reset covergroups remain separate evidence and are not reported as GPIO DUT RTL coverage.",
+    "MASK=1 is characterized as enable to match current RTL, scoreboard, and SVA; SPEC-MASK-001 remains open because the original prose says mask.",
+    "C3.3 parameter/bad-slave expansion and C3.4 sign-off are outside this plan. Functional coverage percentage alone is not specification sign-off."
+  ],
+  "runs": [
+    {
+      "id": "gpio_c3_2_closure_seed21",
+      "set": "gpio_dut",
+      "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_c3_2_coverage_test",
+      "target": "c3_2_closure",
+      "seed": 21,
+      "execution_target": "GPIO DUT RTL",
+      "build_variant": "tb_top_default",
+      "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default",
+      "driver_mode": "legacy_serial_checked",
+      "runtime_parameters": {"legal_writable_registers": 6, "wstrb_patterns": 16},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": ["[C3_2_CLOSURE_PASS]"]},
+      "plusargs": []
+    },
+    {
+      "id": "gpio_c3_2_timing_seed22", "set": "gpio_dut", "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_c3_2_timing_closure_test", "target": "c3_2_timing_closure", "seed": 22,
+      "execution_target": "GPIO DUT RTL with read-only timing adapter",
+      "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "v4_depth4",
+      "runtime_parameters": {"response_block_delays": [1, 3, 6]},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": ["[C3_2_TIMING_CLOSURE_PASS]"]},
+      "plusargs": []
+    },
+    {
+      "id": "gpio_c3_2_reset_context_seed23", "set": "gpio_dut", "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_c3_2_reset_context_test", "target": "c3_2_reset_context", "seed": 23,
+      "execution_target": "GPIO DUT RTL",
+      "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "legacy_serial_reset_injection",
+      "runtime_parameters": {"reset_contexts": ["w_only", "accepted_write", "accepted_read"]},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": ["[C3_2_RESET_CONTEXT_PASS]"]},
+      "plusargs": []
+    }
+  ]
+}

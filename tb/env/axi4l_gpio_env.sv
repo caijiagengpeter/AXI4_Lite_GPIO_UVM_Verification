@@ -28,6 +28,9 @@ class axi4l_gpio_env extends uvm_env;
     gpio_agent_h.monitor.ap.connect(scoreboard.gpio_imp);
     timing_monitor.event_ap.connect(scoreboard.c2_imp);
     axi_agent.monitor.request_ap.connect(coverage.axi_req_imp);
+    axi_agent.monitor.response_ap.connect(coverage.axi_rsp_imp);
+    axi_agent.monitor.bus_ap.connect(coverage.bus_imp);
+    timing_monitor.coverage_event_ap.connect(coverage.timing_imp);
     gpio_agent_h.monitor.ap.connect(coverage.gpio_imp);
   endfunction
 endclass

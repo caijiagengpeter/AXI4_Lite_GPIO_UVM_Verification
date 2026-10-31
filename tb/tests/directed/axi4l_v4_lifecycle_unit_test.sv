@@ -10,10 +10,20 @@ endclass
 
 class axi4l_v4_lifecycle_unit_test extends uvm_test;
   `uvm_component_utils(axi4l_v4_lifecycle_unit_test)
+  covergroup lifecycle_scenario_cg with function sample(int scenario);
+    option.per_instance = 1;
+    cp_scenario: coverpoint scenario {
+      bins normal_publish = {0}; bins normal_abort_race = {1};
+      bins handshake_then_reset = {2}; bins unfinished_abort = {3};
+      bins credit_wait_reset = {4}; bins direction_independence = {5};
+    }
+  endgroup
+
 
   function new(string name = "axi4l_v4_lifecycle_unit_test",
                uvm_component parent = null);
     super.new(name, parent);
+    lifecycle_scenario_cg = new;
   endfunction
 
   function void check_condition(bit condition, string message);
@@ -127,6 +137,7 @@ class axi4l_v4_lifecycle_unit_test extends uvm_test;
           (registry_count == 0) && (terminal_depth == 0),
           "normal publication did not release/retire exactly once");
     check_invariant(service, "normal publish");
+    lifecycle_scenario_cg.sample(0);
   endtask
 
   task automatic test_normal_abort_race();
@@ -160,6 +171,7 @@ class axi4l_v4_lifecycle_unit_test extends uvm_test;
     service.publish_next(sink, published);
     check_condition(sink.put_count == 1, "race produced missing/duplicate response");
     check_invariant(service, "terminal race");
+    lifecycle_scenario_cg.sample(1);
   endtask
 
   task automatic test_handshake_then_reset_stays_normal();
@@ -197,6 +209,7 @@ class axi4l_v4_lifecycle_unit_test extends uvm_test;
           (sink.responses[0].rdata === 'h1234_5678),
           "post-reset publication did not preserve normal R snapshot");
     check_invariant(service, "handshake then reset");
+    lifecycle_scenario_cg.sample(2);
   endtask
 
   task automatic test_unfinished_reset_abort_and_item_done();
@@ -251,6 +264,7 @@ class axi4l_v4_lifecycle_unit_test extends uvm_test;
           (sink.responses[0].rdata === 'x),
           "synthetic abort response violated four-state contract");
     check_invariant(service, "unfinished reset abort");
+    lifecycle_scenario_cg.sample(3);
   endtask
 
   task automatic test_credit_wait_reset_without_phantom_release();
@@ -299,6 +313,7 @@ class axi4l_v4_lifecycle_unit_test extends uvm_test;
           (registry_count == 0) && (sink.put_count == 2),
           "no-credit abort created a phantom token or lost a response");
     check_invariant(service, "credit-wait reset");
+    lifecycle_scenario_cg.sample(4);
   endtask
 
   task automatic test_credit_wait_and_direction_independence();
@@ -381,6 +396,7 @@ class axi4l_v4_lifecycle_unit_test extends uvm_test;
     check_condition(item_done_a, "new-epoch reset context item_done claim failed");
     service.publish_next(sink, published);
     check_invariant(service, "new epoch cleanup");
+    lifecycle_scenario_cg.sample(5);
   endtask
 
   task run_phase(uvm_phase phase);

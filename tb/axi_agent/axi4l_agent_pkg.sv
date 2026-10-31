@@ -13,6 +13,7 @@ package axi4l_agent_pkg;
   localparam axi4l_access_e AXI4L_READ  = axi4l_agent_types_pkg::AXI4L_READ;
   localparam axi4l_access_e AXI4L_WRITE = axi4l_agent_types_pkg::AXI4L_WRITE;
 
+  `include "axi4l_coverage_observation.sv"
   `include "axi4l_sequencer.sv"
   `include "axi4l_driver.sv"
   `include "axi4l_monitor.sv"

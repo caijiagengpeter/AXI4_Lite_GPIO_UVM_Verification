@@ -13,8 +13,8 @@ The current environment is a strong verification-development milestone, not a fo
 | Reference model | C2 independent cycle model for GPIO output, input synchronization, `CHANGED`, `MASK`, `INT`, and registered `o_int`; expected values never come from DUT internal data |
 | Checking | External AW/W/AR accepted queues, real internal commit/snapshot timing, ordered/qualified responses, pin checking, reset epochs, and orphan/duplicate/missing audits |
 | Assertions | AXI stability/response checks, reset checks, synchronizer checks, interrupt relation, W1C/sticky checks, and activation cover properties |
-| Functional coverage | AXI request shape plus observed GPIO edge/output/interrupt coverage; the implemented groups reached 100% in the recorded run |
-| Coverage infrastructure | C3.1 machine-readable planned/actual manifest, four compatible coverage-object merges, reproducible URG reports, and explicit GPIO/test-slave claim separation |
+| Functional coverage | C3.2 observed-event coverage for 16 WSTRB patterns, legal register crosses, AW/W gaps, stalls/latency, reset contexts, W1C collision, MASK/IRQ, occupancy/order; final default-GPIO group 99.56% with one retained zero-cycle response bin |
+| Coverage infrastructure | C3.1 frozen baseline plus C3.2 overlay manifest, 21 reproducible runs, four compatible coverage-object merges, and explicit GPIO/test-slave claim separation |
 | Pipelining and stress | v4 受控 slave 实测 write/read depth 3、4、8；GPIO DUT 的 v3 depth-2/3 stress 仍只观察到最大 2，二者不混报 |
 | RAL | Planned, not implemented |
 | Formal sign-off | Not claimed; the `MASK` polarity conflict and coverage/parameter gaps remain open |
@@ -139,6 +139,9 @@ Digital simulation checks the synchronizer's sampled behavior only. It does not 
 | `axi4l_v4_depth3_test` | 受控 depth-3 组件级边界运行 |
 | `axi4l_v4_reset_test` | AW-only、W-only、pending B/R、credit wait、normal-but-unpublished、exactly-once 与逐场景 recovery |
 | `axi4l_c2_timing_test` | Non-zero buffered SET/CLEAR/TOGGLE, B/R backpressure, delayed snapshot, intervening write, same-edge read/write, and reset while buffered |
+| `axi4l_c3_2_coverage_test` | Six legal writable registers x all 16 explicit WSTRB patterns, AW/W gap/backpressure classes, and MASK/IRQ path; seed 21 |
+| `axi4l_c3_2_timing_closure_test` | Scoreboard-checked 1/short/moderate real commit/read-snapshot latency closure; seed 22 |
+| `axi4l_c3_2_reset_context_test` | Observed W-only/accepted-write/accepted-read reset entry and checked recovery; seed 23 |
 | `axi4l_c2_checker_selftest` | Isolated orphan/duplicate/missing/stale and response-qualification fault injection without expected-error regression pollution |
 
 The mid-reset test covers a partial write, pending B response, pending R response, mixed read/write activity, credit wait, and reset after completed B/R boundaries.
@@ -201,6 +204,14 @@ Optional C3.1 subsets use a fresh output name, for example:
 Example with a different VCS installation:
 
 ```bash
+C3.2 full run uses a distinct output tree and leaves C3.1 untouched:
+
+    make coverage_c3_2
+
+Optional GPIO-only execution also requires a fresh output name:
+
+    make coverage_c3_2_gpio C3_2_OUT=c3_2_gpio_review
+
 make coverage VCS_HOME=/path/to/synopsys/vcs/V-2023.12-SP1
 ```
 
@@ -218,6 +229,9 @@ not overwrite the legacy report.
 
 ### Regression versus coverage targets
 
+C3.2 writes `sim/c3_2_coverage/` by default; the final recorded verification
+run for this stage is `sim/c3_2_coverage_verified/`.
+
 The regression and coverage targets are complementary:
 
 - `make regression` runs 15 tests: smoke/GPIO smoke, v2 directed/random, v3 pipeline/reset/stress, five v4 lifecycle/component/reset tests, C2 timing, W1C collision, and the isolated checker self-test.
@@ -227,6 +241,10 @@ The regression and coverage targets are complementary:
   separately. The controlled-slave report is not a GPIO DUT RTL claim.
 
 ## Recorded coverage snapshot
+
+- `make coverage_c3_2` resolves the C3.2 overlay into 21 rows: the unchanged
+  C3.1 inventory plus three GPIO closure rows at seeds 21/22/23. It preserves
+  the same four incompatible coverage-object boundaries.
 
 The repository contains the following URG report snapshot:
 
@@ -315,23 +333,23 @@ The “v3.2” name is a project milestone used to describe the current stress/r
 ## Known limitations and open issues
 
 1. **`MASK` polarity is unresolved (`SPEC-MASK-001`).** DUT comments describe `1` as masking an interrupt, while the implemented expression is `r_mask & changed`, so `1` behaves as an enable. The scoreboard and SVA intentionally follow the RTL behavior until the design/specification owner resolves the conflict.
-2. **Functional coverage is narrower than the plan.** The current two covergroups do not yet implement every cross and parameter item in `docs/coverage_plan.txt`; 100% group coverage is therefore not full plan closure.
-3. **The recorded total score is below the planned 95% functional target.** The v4 controlled-slave/test code is compiled but not executed by the preserved seven-run coverage merge, so line/condition/toggle/branch scores also include currently unexercised v4 component code.
+2. **C3.2 functional coverage is not full-plan sign-off.** The default GPIO object reaches 99.56%, but the operation x changes/no-change data category, full W1C data/strobe/change cross, unaligned alias coverage, and alternate parameters remain partial.
+3. **One GPIO response-latency bin remains uncovered.** Passive accepted-to-completed-response latency cannot be zero in the current registered sampling model. The bin is retained and unexcluded; code coverage also remains below sign-off levels.
 4. **Only the default DUT configuration is elaborated by `tb_top`.** `NIN/NOUT` boundaries, `NIN=0`, `OPT_SKIDBUFFER=0`, `OPT_LOWPOWER=1`, and alternate reset values still need an automated parameter matrix.
 5. **RAL is not implemented.** The plan describes alias, volatile, and W1C modeling, but `tb/ral/` is currently empty.
 6. **Stress depth 3 is configured but the present DUT run observes a maximum outstanding depth of 2.** This is still useful for credit and backpressure checking, but it is not evidence of three simultaneously accepted requests.
 7. **Black-box fallback is intentionally weaker.** The default C2 path is cycle-exact white-box; `+C2_BLACKBOX` retains end-to-end checks but cannot distinguish acceptance from delayed commit/snapshot under B/R backpressure.
-8. **C3.1 provenance is automated but is not a parameter matrix.** The manifest records Git/tool/test/seed/default parameters/driver/outcome/log/DB/report and exact exit/UVM/SVA results; alternate elaborations and mask-policy closure remain C3.3/C3.4 work.
+8. **C3.2 provenance is automated but is not a parameter matrix.** The overlay records Git/tool/test/seed/default parameters/driver/outcome/log/DB/report and exact exit/UVM/SVA results; alternate elaborations and mask-policy closure remain C3.3/C3.4 work.
 9. **Sign-off documents are not closed.** `docs/verification_report.md` remains a template, and plan/traceability statuses have not been updated to match all implemented tests.
 10. **Repository is local-only.** The B2 checkpoint/tag and local history exist, but there is intentionally no remote; generated VCS artifacts remain untracked and no push is performed.
-11. **C3 closure is incomplete.** C3.1 provides separate C2/v4/GPIO/checker coverage merges, but C3.2 bin closure, C3.3 parameter/bad-slave expansion, and C3.4 sign-off remain future work.
+11. **C3 closure is still not sign-off.** C3.2 closes the reviewed default-GPIO critical bins except the retained zero-cycle response bin; controlled-slave depth-2 reset reaches only actual 1/1. C3.3 parameter/bad-slave expansion and C3.4 sign-off remain future work.
 
 ## Roadmap
 
 - Resolve `SPEC-MASK-001` in writing and align RTL comments, checks, and documentation.
-- Expand functional coverage to the planned WSTRB/register, AW/W gap, backpressure, W1C, interrupt, reset-state, and occupancy crosses.
+- Review the retained response-latency/depth-2 gaps and finish the partial data-category, W1C, and alias crosses without exclusions lacking rationale.
 - Add automated parameter regressions for `NIN`, `NOUT`, skid-buffer, low-power, and default-output configurations.
-- Use the C3.1 grouped manifests/reports as the evidence base; do not reuse the historical seven-run URG snapshot as C2/v4 closure.
+- Use the C3.1 baseline and C3.2 grouped manifests/reports as the evidence base; do not reuse the historical seven-run URG snapshot as C2/v4 closure.
 - Implement a UVM register model with explicit alias prediction and volatile/W1C handling.
 - Add more randomized seeds, reset-in-stress scenarios, and coverage-directed closure tests.
 - Add a bad-slave negative suite and a separate v4 component coverage merge.
@@ -356,4 +374,5 @@ The “v3.2” name is a project milestone used to describe the current stress/r
 ## Provenance and licensing
 
 `dut/rtl/axilgpio.v` and `dut/rtl/skidbuffer.v` originate from the ZipCPU WB2AXIP project and carry Apache License 2.0 notices in their source headers. The repository currently has no root `LICENSE` file covering the verification environment. Add an explicit project license and preserve all upstream notices before redistributing or accepting external contributions.
+- `docs/v4_c3_2_functional_coverage.md`: requirement-to-bin-to-test matrix, real 21-run VCS/URG results, retained gaps, and C3.3/C3.4 boundary.
 
