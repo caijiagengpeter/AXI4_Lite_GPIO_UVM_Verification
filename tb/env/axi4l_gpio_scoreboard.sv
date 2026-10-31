@@ -64,9 +64,10 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
   bit                        selftest_mode;
   int unsigned               accepted_observations;
 
-  // Interrupt-mask polarity switch.  The implemented RTL uses MASK=1 to enable
-  // an interrupt source.  Keeping the polarity configurable lets tests also
-  // characterize the opposite interpretation found in an ambiguous spec note.
+  // SPEC-MASK-001 was resolved by project decision on 2026-10-31: MASK=1
+  // enables an interrupt source.  The model remains transaction/pin driven and
+  // does not read DUT internal state.  The knob is retained only for historical
+  // characterization tests; project pass/fail tests select 1-enable.
   bit mask_one_enable = 1'b1;
 
   int unsigned write_checks;

@@ -113,6 +113,100 @@ class axi4l_c3_4_dut_closure_test extends axi4l_gpio_v2_base_test;
   endtask
 endclass
 
+class axi4l_c3_4b_w1c_off_change_test extends axi4l_gpio_v2_base_test;
+  `uvm_component_utils(axi4l_c3_4b_w1c_off_change_test)
+
+  localparam bit [AXI4L_ADDR_WIDTH-1:0] ADDR_CHANGED = 5'h14;
+  // The proven C2 collision schedule: the GPIO drive starts just after the
+  // launch edge and q->qq->last detection occurs on the third sampled edge.
+  // Two driver clocking-block delays make the real WRITE_COMMIT occur there.
+  localparam int unsigned COMMIT_ALIGN_DELAY = 2;
+
+  function new(string name = "axi4l_c3_4b_w1c_off_change_test",
+               uvm_component parent = null);
+    super.new(name, parent);
+  endfunction
+
+  task automatic clear_changed(bit [GPIO_NIN-1:0] clear_mask);
+    bit [AXI4L_DATA_WIDTH-1:0] clear_data;
+    clear_data = '0;
+    for (int bit_index = 0; bit_index < GPIO_NIN; bit_index++)
+      clear_data[bit_index] = clear_mask[bit_index];
+    axi_write(ADDR_CHANGED, clear_data, 4'b0001);
+  endtask
+
+  task automatic establish_clean_low(bit [GPIO_NIN-1:0] clear_mask);
+    // A return-to-low transition is itself a legal hardware event.  Let it
+    // traverse q/qq/last, then clear the resulting sticky bit while stable.
+    gpio_level('0, 6);
+    clear_changed(clear_mask);
+    axi_read(ADDR_CHANGED);
+  endtask
+
+  task automatic exercise_off_change(bit data_one,
+                                     int unsigned bit_index);
+    bit [GPIO_NIN-1:0]         onehot_gpio;
+    bit [AXI4L_DATA_WIDTH-1:0] write_data;
+
+    onehot_gpio = '0;
+    onehot_gpio[bit_index] = 1'b1;
+    write_data = '0;
+    if (data_one)
+      write_data[bit_index] = 1'b1;
+
+    establish_clean_low(onehot_gpio);
+    fork
+      gpio_level(onehot_gpio, 6);
+      axi_write(ADDR_CHANGED, write_data, 4'b0000,
+                COMMIT_ALIGN_DELAY, COMMIT_ALIGN_DELAY, 1);
+    join
+
+    // The independent cycle model consumes the external request plus the real
+    // internal commit event, applies W1C before the same-edge hardware set, and
+    // checks this read.  No DUT internal state is used as expected data.
+    axi_read(ADDR_CHANGED);
+    `uvm_info("C3_4B_W1C_OFF_CHANGE",
+      $sformatf("checked data=%0b/WSTRB=off with same-commit hardware change on bit%0d",
+                data_one, bit_index), UVM_NONE)
+  endtask
+
+  task run_phase(uvm_phase phase);
+    int unsigned reads_before;
+    int unsigned responses_before;
+    longint unsigned commits_before;
+
+    phase.raise_objection(this);
+    reads_before     = env.scoreboard.read_checks;
+    responses_before = env.scoreboard.response_checks;
+    commits_before   = env.timing_monitor.write_commit_count;
+
+    exercise_off_change(1'b0, 0);
+    exercise_off_change(1'b1, (GPIO_NIN > 1) ? 1 : 0);
+    repeat (4) @(env.axi_agent.driver.vif.mon_cb);
+
+    if ((env.scoreboard.read_checks - reads_before) < 4)
+      `uvm_error("C3_4B_W1C_READ_CHECK",
+        $sformatf("only %0d/4 CHANGED reads were checker-validated",
+                  env.scoreboard.read_checks - reads_before))
+    if ((env.scoreboard.response_checks - responses_before) < 8)
+      `uvm_error("C3_4B_W1C_RESPONSE_CHECK",
+        $sformatf("only %0d/8 responses were checker-validated",
+                  env.scoreboard.response_checks - responses_before))
+    if ((env.timing_monitor.write_commit_count - commits_before) < 4)
+      `uvm_error("C3_4B_W1C_COMMIT_CHECK",
+        $sformatf("only %0d/4 writes reached real internal commit",
+                  env.timing_monitor.write_commit_count - commits_before))
+    if (env.scoreboard.error_count != 0)
+      `uvm_error("C3_4B_W1C_SCOREBOARD",
+        $sformatf("scoreboard recorded %0d errors", env.scoreboard.error_count))
+
+    `uvm_info("C3_4B_W1C_CLOSURE_PASS",
+      "data=0/1 x WSTRB-off x same-commit hardware-change were independently checked",
+      UVM_NONE)
+    phase.drop_objection(this);
+  endtask
+endclass
+
 
 class axi4l_c3_4_v4_payload_seq extends uvm_sequence #(axi4l_seq_item);
   `uvm_object_utils(axi4l_c3_4_v4_payload_seq)

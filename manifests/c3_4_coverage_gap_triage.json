@@ -1,11 +1,18 @@
 {
   "schema_version": "1.0",
-  "phase": "v4.0-C3.4-A",
-  "status": "DRAFT_GAP_REVIEW_NOT_SIGNOFF",
+  "phase": "v4.0-C3.4-B",
+  "status": "SIGNOFF_READINESS_PENDING_EVIDENCE_AND_APPROVALS",
   "checkpoint": {
-    "baseline_tag": "v4.0-c3.3-baseline",
-    "commit": "3dfdf5e5bbc135eec7204518aaf9098189233b3c",
-    "c3_4_commit_created": false
+    "baseline_tag": "v4.0-c3.4a-baseline",
+    "commit": "e1404e5906a08fca70071a5a0de02f3754fe0376",
+    "c3_4b_commit_created": false
+  },
+  "c3_4b_run_attempt": {
+    "root": "sim/c3_4b_w1c_directed_review",
+    "status": "NOT_RUN_LICENSE_UNAVAILABLE",
+    "tool": "VCS V-2023.12-SP1",
+    "diagnostic": "Cannot find license file; compile stopped before source parsing",
+    "baseline_cross_retained": [6, 8]
   },
   "evidence": {
     "root": "sim/c3_4_coverage_closure_reviewed_final",
@@ -139,14 +146,21 @@
       "object": "GPIO DUT and controlled-slave BRESP/RRESP non-OKAY bits",
       "classification": "design_constant",
       "status": "WAIVER_CANDIDATE_NOT_APPROVED",
-      "rationale": "the implemented legal behavior always returns OKAY; no exclusion was added"
+      "rationale": "axilgpio.v:265 and :315 and axi4l_v4_test_slave.sv:89-91/129/139 drive 2'b00; no error-response path exists; no exclusion was added"
     },
     {
       "id": "C3.4-CODE-PADDING",
-      "object": "NOUT/NIN padding, deterministic read-data constants, high-water upper bits and lint-reduction nets",
-      "classification": "configuration_or_structural_constant",
+      "object": "NIN read/INT padding and deterministic read-data constant bits",
+      "classification": "nin_width_structural_constant",
       "status": "WAIVER_CANDIDATE_NOT_APPROVED",
-      "rationale": "retain raw scoring until reviewed per bit; do not cross-merge parameter VDBs"
+      "rationale": "upper bits are zero-extended by construction; retain raw scoring and do not cross-merge parameter VDBs"
+    },
+    {
+      "id": "C3.4-CODE-NOUT-CONSTANT",
+      "object": "NOUT padding and output bits above the configured width",
+      "classification": "nout_width_structural_constant",
+      "status": "WAIVER_CANDIDATE_NOT_APPROVED",
+      "rationale": "default NOUT=30 leaves structural constants; NOUT=32 branch was separately exercised, not cross-merged"
     },
     {
       "id": "C3.4-V4-INVALID-DEPTH",
@@ -158,23 +172,25 @@
     {
       "id": "C3.4-FUNC-W1C-OFF-CHANGE",
       "object": "w1c_matrix data x strobe-off x hardware-changing",
-      "classification": "reachable_timing_cross_under_review",
-      "status": "UNRESOLVED_2_OF_8",
-      "evidence": "variables 7/7; cross 6/8; behavior itself remains scoreboard/SVA checked"
+      "classification": "reachable_exact_internal_commit_alignment",
+      "status": "CLOSED_VERIFIED_CROSS_8_OF_8",
+      "test": "axi4l_c3_4b_w1c_off_change_test seed 43",
+      "evidence": "seed43 exit=0 UVM W/E/F=0/0/0 SVA fail=0 and SCB_PASS; compatible merge reports variables 7/7 and cross 8/8; one/off/changing and zero/off/changing are each hit once exclusively by seed43"
     },
     {
       "id": "C3.4-FUNC-IMMEDIATE",
       "object": "accepted-to-response latency immediate bin",
-      "classification": "timing_definition_review",
-      "status": "UNRESOLVED_RETAINED",
-      "evidence": "latency variable 4/5; immediate count 0; no ignore/exclusion/delete"
+      "classification": "structurally_unreachable_registered_response_sampling",
+      "status": "WAIVER_CANDIDATE_NOT_APPROVED",
+      "evidence": "monitor accept at axi4l_monitor.sv:145-180/197-210; DUT BVALID/RVALID NBAs at axilgpio.v:255-264/304-315; #1step monitor completes only at a later edge, so minimum sampled latency is 1; no exclusion/delete"
     },
     {
       "id": "SPEC-MASK-001",
       "object": "MASK polarity",
-      "classification": "specification_conflict",
-      "status": "OPEN",
-      "rationale": "checker models implemented RTL MASK=1-enable behavior; no RTL semantic change authorized"
+      "classification": "rtl_derived_behavioral_specification",
+      "status": "RESOLVED_BY_PROJECT_SPEC_DECISION",
+      "decision_date": "2026-10-31",
+      "rationale": "MASK=1 enables and MASK=0 masks, matching stable RTL; original RTL comments conflict; DUT unchanged; not a coverage waiver; independent golden model does not read DUT internal expected state"
     }
   ],
   "integrity": {
@@ -183,6 +199,7 @@
     "bins_deleted_or_goals_lowered": false,
     "parameter_vdbs_cross_merged": false,
     "remote_git_operation": false,
-    "final_signoff_claimed": false
+    "final_signoff_claimed": false,
+    "coverage_exclusions_approved": false
   }
 }

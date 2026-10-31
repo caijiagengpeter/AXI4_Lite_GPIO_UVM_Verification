@@ -231,8 +231,9 @@ Source/Basis:
   axilgpio.v lines 439-454; verification_plan.txt Sections 3 and 7.4.
 Status: CONFIRMED
 Notes:
-  The storage and WSTRB behavior are confirmed; the meaning of a stored 1 is
-  unresolved by SPEC-MASK-001.
+  The storage and WSTRB behavior are confirmed. By project specification
+  decision SPEC-MASK-001 dated 2026-10-31, a stored 1 enables the corresponding
+  interrupt source and a stored 0 masks it.
 
 ID: REQ-INT-002
 Requirement/Behavior:
@@ -243,8 +244,9 @@ Source/Basis:
   axilgpio.v lines 400-408 and 451-455; verification_plan.txt Sections 7.4-7.5.
 Status: CONFIRMED
 Notes:
-  Writes to INT have no functional effect when NIN>0. Whether r_mask should be
-  described as a mask or an enable remains unresolved by SPEC-MASK-001.
+  Writes to INT have no functional effect when NIN>0. The register name MASK is
+  retained for RTL compatibility, but its project behavioral specification is
+  1=enable and 0=masked.
 
 ID: REQ-CFG-001
 Requirement/Behavior:
@@ -271,22 +273,25 @@ Notes:
   This statement does not generalize the internal skidbuffer reset style.
 
 
-Open specification conflict
----------------------------
+Resolved RTL-derived behavioral specification
+---------------------------------------------
 
 ID: SPEC-MASK-001
 Requirement/Behavior:
-  The intended polarity of MASK is unresolved. RTL comments say MASK=1
-  suppresses an interrupt, while implemented logic computes
-  int_toggled = r_mask & toggled and r_int <= |(r_mask & toggled), so MASK=1
-  behaves as an enable.
+  MASK bit 1 enables the corresponding sticky CHANGED interrupt source; MASK
+  bit 0 masks it. INT is r_mask & toggled and o_int is its registered reduction.
 Source/Basis:
   axilgpio.v comments, lines 50-60, versus implemented logic at lines 400-408
-  and 451-455; verification_plan.txt Section 8.
-Status: CONFLICT
+  and 451-455; project specification-owner decision dated 2026-10-31;
+  verification_plan.txt Section 8.
+Status: RESOLVED BY PROJECT SPEC DECISION
 Notes:
-  Keep expected behavior configurable and characterize both interpretations.
-  Do not claim specification sign-off until the design/spec owner records
-  whether the comments or the RTL are authoritative. No DUT change is implied
-  by this document.
+  The original RTL comments describe the opposite polarity and remain a known
+  documentation conflict in the upstream DUT source. This personal project has
+  no separate commercial design specification, so the owner selected the
+  stable, measured ZipCPU RTL behavior as the authoritative behavioral spec.
+  The independent golden model computes this semantic from accepted bus/pin
+  observations and real commit/snapshot timing; it does not read r_mask,
+  toggled, INT, or other DUT internals as expected data. No DUT RTL change and
+  no coverage waiver is implied by this decision.
 

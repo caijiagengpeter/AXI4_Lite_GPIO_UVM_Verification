@@ -14,7 +14,8 @@ class axi4l_gpio_v2_base_test extends uvm_test;
       this, "env.axi4l_agent", "is_active", UVM_ACTIVE);
     uvm_config_db#(uvm_active_passive_enum)::set(
       this, "env.gpio_agent", "is_active", UVM_ACTIVE);
-    // Match the implemented RTL behavior for the open MASK-polarity issue.
+    // Project behavioral specification decision SPEC-MASK-001 (2026-10-31):
+    // match the RTL-derived MASK=1-enable semantic.
     uvm_config_db#(bit)::set(this, "env.scoreboard",
                              "mask_one_enable", 1'b1);
     env = axi4l_gpio_env::type_id::create("env", this);

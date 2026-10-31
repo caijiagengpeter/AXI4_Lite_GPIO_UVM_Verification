@@ -28,7 +28,8 @@ PYTHON   ?= python3.11
 	coverage_v4 coverage_v4_gpio coverage_v4_bfm coverage_v4_checker \
 	c3_2_closure coverage_c3_2 coverage_c3_2_gpio \
 	c3_3_parameter coverage_c3_3 coverage_c3_3_delta \
-	c3_4_dut_closure c3_4_v4_payload coverage_c3_4 coverage_c3_4_delta \
+	c3_4_dut_closure c3_4_v4_payload c3_4b_w1c_off_change \
+	coverage_c3_4 coverage_c3_4_delta coverage_c3_4b_delta \
 	coverage_clean compile run clean
 
 all: smoke
@@ -154,6 +155,11 @@ c3_4_v4_payload: compile
 		+V4_TEST_SLAVE +V4_SLAVE_DEPTH=8 \
 		+ntb_random_seed=42 +UVM_VERBOSITY=UVM_LOW -l c3_4_v4_payload.log
 
+c3_4b_w1c_off_change: compile
+	./$(SIMV) +UVM_TESTNAME=axi4l_c3_4b_w1c_off_change_test \
+		+ntb_random_seed=43 +UVM_VERBOSITY=UVM_LOW \
+		-l c3_4b_w1c_off_change.log
+
 coverage: coverage_clean
 	$(VCS) $(VCS_COMMON_OPTS) -cm $(COV_TYPES) -cm_dir coverage.vdb \
 		-o $(COV_SIMV) \
@@ -260,4 +266,8 @@ coverage_c3_4:
 coverage_c3_4_delta:
 	$(PYTHON) ../scripts/coverage_manifest.py run --plan $(C3_4_PLAN) \
 		--output-root $(C3_4_OUT) --sets c3_4_delta
+
+coverage_c3_4b_delta:
+	$(PYTHON) ../scripts/coverage_manifest.py run --plan $(C3_4_PLAN) \
+		--output-root $(C3_4_OUT) --sets c3_4b_delta
 

@@ -1,10 +1,11 @@
 {
   "extends": "c3_3_parameter_negative_plan.json",
-  "phase": "AXI4-Lite v4.0-C3.4-A",
-  "description": "Coverage-driven closure for the reachable default GPIO DUT toggle plus checked v4 payload activity and a separate full top-level suite.",
+  "phase": "AXI4-Lite v4.0-C3.4-B",
+  "description": "C3.4-A evidence plus a final directed W1C closure test, resolved MASK behavioral specification, and sign-off preparation without automatic waiver approval.",
   "source_inventory": {
     "c3_4_dut_closure": "Checker-qualified unaligned aliases, alternating AWADDR[1], independent AW/W gaps, non-zero WSTRB output side effects, and B/R/request stalls.",
     "c3_4_v4_payload": "Controlled-slave response/data/order/depth/stability checks with all address/protection bits and four data/strobe patterns.",
+    "c3_4b_w1c_off_change": "Two exact real-WRITE_COMMIT alignments target data=0/1 x WSTRB-off x concurrent synchronized hardware-change while the independent scoreboard checks sticky status; coverage evidence remains required.",
     "c3_4_v4_full": "A separately named top-level merge containing the legacy seven-test GPIO mix plus lifecycle, controlled-slave, and C3.4 tests; never reported as DUT-only coverage."
   },
   "merge_groups": {
@@ -21,10 +22,19 @@
     "C3.4 default-DUT and v4-controlled groups retain the C3.3 compile signature and denominator for before/after comparison.",
     "v4_legacy_current and v4_full_default share the exact current source/build signature, enabling an apples-to-apples top-level comparison.",
     "v4_full_default deliberately executes both axi_if/DUT and v4_axi_if/test-slave traffic under one compatible default build.",
-    "No DUT RTL, coverage exclusions, goals, or bins are changed; response-latency immediate remains scored and uncovered pending timing review.",
-    "SPEC-MASK-001 remains open and the checker continues to model the implemented MASK=1-enable behavior."
+    "No DUT RTL, coverage exclusions, goals, or bins are changed; response-latency immediate remains scored and uncovered as a structural waiver candidate pending approval.",
+    "SPEC-MASK-001 is resolved by the project specification decision dated 2026-10-31: MASK=1 enables; the independent checker continues to calculate that behavior without reading DUT internal state."
   ],
   "runs": [
+    {
+      "id": "gpio_c3_4b_w1c_off_change_seed43", "set": "c3_4b_delta", "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_c3_4b_w1c_off_change_test", "target": "c3_4b_w1c_off_change", "seed": 43,
+      "execution_target": "Default GPIO DUT RTL", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "legacy_serial_exact_commit_alignment",
+      "runtime_parameters": {"commit_align_delay": 2, "w1c_data": [0, 1], "wstrb": 0, "hardware_change": true},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": ["[C3_4B_W1C_CLOSURE_PASS]", "[SCB_PASS]"]}, "plusargs": []
+    },
+
     {
       "id": "gpio_c3_4_dut_closure_seed41", "set": "c3_4_delta", "merge_group": "gpio_dut_default",
       "test_name": "axi4l_c3_4_dut_closure_test", "target": "c3_4_dut_closure", "seed": 41,

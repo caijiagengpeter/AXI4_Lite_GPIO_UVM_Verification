@@ -333,11 +333,11 @@ the final byte. Unimplemented output/input bits must remain/read zero.
 
 7.4 MASK and INT
 
-Until the semantic conflict in Section 8 is resolved, collect both expected
-interpretations but compare pass/fail against a selected configuration:
+Project decision SPEC-MASK-001 dated 2026-10-31 fixes the behavioral semantic:
 
-  RTL mode     : int_active = r_mask & toggled
-  Comment mode : int_active = ~r_mask & toggled
+  int_active = r_mask & toggled
+  MASK bit 1 enables the corresponding source; MASK bit 0 masks it. The MASK
+  register name is retained for RTL compatibility.
 
 Verify per bit:
 
@@ -388,8 +388,8 @@ hardware-set or registered interrupt update as a software side effect.
   - i_gpio is functionally ignored.
 
 
-8. Open specification issue: MASK semantic conflict
----------------------------------------------------
+8. Resolved RTL-derived MASK behavioral specification
+-----------------------------------------------------
 
 Issue ID: SPEC-MASK-001
 
@@ -406,20 +406,19 @@ Implemented RTL:
 These are opposite polarities. In RTL, r_mask=1 behaves as an interrupt enable,
 not as an active-high mask.
 
-Required decision before final sign-off:
+Project specification decision (2026-10-31):
 
-  A. Comment is authoritative: MASK=1 suppresses interrupt. RTL has a bug.
-  B. RTL is authoritative: MASK=1 enables interrupt. Rename/document as ENABLE.
-
-Verification handling before decision:
-
-  - Do not modify DUT.
-  - Keep the scoreboard mask polarity configurable.
-  - Run a focused test that records both predictions and actual RTL behavior.
-  - Mark the test expected-pass in RTL mode and expected-mismatch in comment mode.
-  - Do not claim specification sign-off until the owner records decision A or B.
-  - Once decided, freeze the reference model and update test expectations and
-    RAL field description without silently changing historical results.
+  - Select the implemented ZipCPU RTL behavior: MASK=1 enables and MASK=0 masks.
+  - Treat this as an explicit RTL-derived behavioral specification because this
+    personal project has no separate commercial design specification.
+  - Record the original comment polarity as conflicting source documentation;
+    do not modify DUT RTL in this verification closure.
+  - This resolution is a specification decision, not a coverage waiver.
+  - Golden-model expected MASK/INT/o_int values remain independently calculated
+    from accepted transactions, GPIO samples, and the written semantic. DUT
+    internal r_mask/toggled/INT state must never be used as expected data.
+  - The scoreboard configuration knob may remain for historical characterization,
+    but all project pass/fail tests select the resolved 1-enable interpretation.
 
 
 9. Reset verification
@@ -896,9 +895,10 @@ Coverage completion (initial targets; adjust only by reviewed decision):
 
 Specification completion:
 
-  - SPEC-MASK-001 is resolved in writing by the design/spec owner.
-  - The scoreboard, RAL description, tests, and expected results all use the
-    chosen semantic interpretation.
+  - [x] SPEC-MASK-001 resolved in writing by the project specification owner on
+    2026-10-31: MASK=1 enables, MASK=0 masks.
+  - Scoreboard, future RAL description, tests, and expected results use this
+    semantic; the golden model remains independent of DUT internal state.
 
 Quality/documentation completion:
 
@@ -928,13 +928,13 @@ Random stress           RND-001..003                     merged coverage
 ----------------------------------------------------
 
   [ ] Confirm supported NIN/NOUT parameter range.
-  [ ] Resolve or formally track SPEC-MASK-001.
+  [x] Resolve or formally track SPEC-MASK-001 (resolved 2026-10-31).
   [ ] Agree on expected read-during-write timing for same-address concurrency.
   [ ] Confirm reset is intentionally synchronous to S_AXI_ACLK.
   [x] Decide simulator/UVM version and coverage tools: VCS V-2023.12-SP1,
       UVM 1.2, and URG V-2023.12-SP1 for the recorded C3.1 run.
   [ ] Freeze interface signal naming and transaction classes.
   [ ] Implement ordered AW/W FIFOs and configurable outstanding/pipeline mode.
-  [ ] Implement configurable mask polarity in the reference model.
+  [x] Implement and select resolved MASK=1-enable polarity in the reference model.
   [ ] Review the first smoke test and scoreboard before scaling random traffic.
 

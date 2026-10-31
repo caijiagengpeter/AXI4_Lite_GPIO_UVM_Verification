@@ -25,7 +25,7 @@ TBD — To be completed after regression.
 | Primary parameter configuration | TBD |
 | Additional parameter configurations | TBD |
 | Verification-plan version | v1.0 |
-| Mask semantic mode | TBD — pending SPEC-MASK-001 resolution |
+| Mask semantic mode | RTL-derived project spec: MASK=1 enable, MASK=0 masked (resolved 2026-10-31) |
 
 ## Verification Scope
 
@@ -100,7 +100,7 @@ authoritative issue list.
 
 | Issue ID | Summary | Severity | Status | Reproducer / Regression Test |
 |---|---|---|---|---|
-| SPEC-MASK-001 | MASK comment/RTL polarity conflict | TBD | OPEN | INT-001 |
+| SPEC-MASK-001 | MASK comment/RTL polarity conflict | Project owner selected RTL behavior on 2026-10-31; DUT unchanged | RESOLVED_BY_PROJECT_SPEC_DECISION | INT-001 |
 
 ## Waivers
 
@@ -130,7 +130,7 @@ TBD — To be completed after regression.
 | Coverage | TBD | TBD |
 | Assertions | TBD | TBD |
 | Known issues / waivers | TBD | TBD |
-| Specification closure | TBD | SPEC-MASK-001 must be resolved in writing |
+| Specification closure | PARTIAL | SPEC-MASK-001 resolved; remaining report/waiver approvals are still pending |
 
 Final decision: TBD  
 Verification owner: TBD  

@@ -98,11 +98,11 @@ Coverpoint/Cross: W1C data x byte strobe x concurrent new change x result
 Bins/Intent: data 0/1, strobe off/on, clear alone, change alone, same-bit
              clear+change with change winning
 Goal: 100% of reachable critical bins
-Status: IMPLEMENTED_BEHAVIOR_CHECKED_CROSS_6_OF_8
+Status: BEHAVIOR_CHECKED_AND_CROSS_8_OF_8
 Notes: Sample the post-update sticky state. Variables are 7/7 and the cross is
-       6/8; data=0/1 with strobe-off plus same-window hardware change remains
-       scored and unresolved even though sticky/change-winning behavior is
-       independently scoreboard/SVA checked.
+       8/8 in the compatible C3.4-A + seed43 C3.4-B merge. The two formerly
+       missing data=0/1 x strobe-off x hardware-changing bins are each hit once
+       exclusively by seed43 and remain independently scoreboard/readback checked.
 
 Coverage ID: COV-INT-001
 Feature/Requirement: REQ-INT-001, REQ-INT-002, SPEC-MASK-001
@@ -111,9 +111,9 @@ Coverpoint/Cross: MASK value x CHANGED value x INT result; active-bit count x
 Bins/Intent: controlling value 0/1, status 0/1, one/multiple active bits,
              o_int assert/hold/deassert
 Goal: 100% of reachable critical bins after polarity resolution
-Status: IMPLEMENTED_PARTIAL
-Notes: Record the selected polarity mode. Coverage does not resolve the open
-       specification conflict.
+Status: IMPLEMENTED_RESOLVED_SPEC
+Notes: Project pass/fail uses the 2026-10-31 MASK=1-enable decision. Coverage
+       characterizes that semantic; the original RTL comment conflict is recorded.
 
 Coverage ID: COV-RST-001
 Feature/Requirement: REQ-RST-001 - reset
@@ -131,11 +131,12 @@ Closure policy
 The frozen plan's initial target is at least 95% overall functional coverage
 and 100% on reachable critical register, WSTRB, AW/W-ordering, W1C, and
 interrupt-polarity bins. Any exclusion, unreachable bin, or goal adjustment
-requires review and a recorded rationale. C3.4 reaches 99.18% on the expanded
+requires review and a recorded rationale. C3.4-A reaches 99.18% on the expanded
 default GPIO functional coverage object while retaining all bins. The response
-latency immediate bin remains 0-hit and the W1C cross remains 6/8.
-SPEC-MASK-001, code-coverage waiver approval, those timing gaps, and final
-sign-off remain open.
+latency immediate bin remains 0-hit and is a structural waiver candidate; no
+exclusion is approved. The compatible C3.4-A + seed43 merge verifies W1C 8/8.
+SPEC-MASK-001 is resolved by project decision (2026-10-31);
+code-coverage waiver approvals and final sign-off remain open.
 
 C3.4 code-coverage evidence boundary
 ------------------------------------

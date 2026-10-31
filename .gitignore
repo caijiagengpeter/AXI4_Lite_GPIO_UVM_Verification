@@ -7,6 +7,7 @@ coverage_report/
 /sim/c3_2_*/
 /sim/c3_3_*/
 /sim/c3_4_*/
+/sim/c3_4b_*/
 DVEfiles/
 *.fsdb
 *.vcd

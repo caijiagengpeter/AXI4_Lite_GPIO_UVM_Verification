@@ -13,11 +13,11 @@ The current environment is a strong verification-development milestone, not a fo
 | Reference model | C2 independent cycle model for GPIO output, input synchronization, `CHANGED`, `MASK`, `INT`, and registered `o_int`; expected values never come from DUT internal data |
 | Checking | External AW/W/AR accepted queues, real internal commit/snapshot timing, ordered/qualified responses, pin checking, reset epochs, and orphan/duplicate/missing audits |
 | Assertions | AXI stability/response checks, reset checks, synchronizer checks, interrupt relation, W1C/sticky checks, and activation cover properties |
-| Functional coverage | C3.4 keeps every scored bin and raises the expanded default-GPIO object from 98.73% to 99.18%; W1C cross is 6/8 and the zero-cycle response bin remains open |
+| Functional coverage | C3.4-A plus the seed43 C3.4-B compatible merge reaches Group 99.64%; W1C data x strobe x hardware is verified 8/8, while accepted-to-response zero-cycle remains a retained waiver candidate |
 | Coverage infrastructure | C3.3 is frozen at `v4.0-c3.3-baseline`; the reviewed C3.4 matrix has 7 isolated builds, 51 reproducible runs, 12 compatible merge groups, and strict DUT/parameter/component/negative claim separation |
 | Pipelining and stress | v4 controlled slave proves write/read depth 3, 4, 8 and reset at actual 2/2; GPIO DUT v3 depth-2/3 stress still observes max 2, and the objects are not merged |
 | RAL | Planned, not implemented |
-| Formal sign-off | Not claimed; the `MASK` polarity conflict and coverage/parameter gaps remain open |
+| Formal sign-off | Not claimed; `SPEC-MASK-001` is resolved, while W1C evidence, waiver approvals, RAL/CI scope decisions, and final report approval remain open |
 
 ## DUT overview
 
@@ -361,22 +361,22 @@ The “v3.2” name is a project milestone used to describe the current stress/r
 
 ## Known limitations and open issues
 
-1. **`MASK` polarity is unresolved (`SPEC-MASK-001`).** DUT comments describe `1` as masking an interrupt, while the implemented expression is `r_mask & changed`, so `1` behaves as an enable. The scoreboard and SVA intentionally follow the RTL behavior until the design/specification owner resolves the conflict.
-2. **C3.4 functional coverage is not final sign-off.** The expanded default GPIO object is 99.18%; W1C is 6/8 at the data/strobe/hardware-change cross, and parameter groups remain isolated reachability evidence rather than being merged to inflate Overall.
-3. **One GPIO response-latency bin remains uncovered.** Passive accepted-to-completed-response latency cannot be zero in the current registered sampling model. The bin is retained and unexcluded; code coverage also remains below sign-off levels.
+1. **`SPEC-MASK-001` is resolved by project decision (2026-10-31).** MASK=1 enables and MASK=0 masks, matching `r_mask & toggled`; upstream RTL comments state the opposite and are recorded as conflicting documentation. The DUT is unchanged and this is not a coverage waiver.
+2. **C3.4 functional coverage is not final sign-off.** The compatible C3.4-A + seed43 report is Group 99.64%; the two exact strobe-off/hardware-change bins are independently checked and the W1C cross is now verified 8/8. Waiver and final-report approvals remain open.
+3. **One GPIO response-latency bin is structurally unreachable under the measured definition.** Acceptance is sampled before registered `BVALID/RVALID` becomes observable, so completion is at least one sampled cycle later. The bin is retained, unexcluded, and only a waiver candidate pending approval.
 4. **The reviewed C3.3 matrix is finite.** NIN=0, NIN/NOUT=1, NOUT=32, SKID=0, LOWPOWER=1, and a non-zero default value pass, but it is not an exhaustive Cartesian product.
 5. **RAL is not implemented.** The plan describes alias, volatile, and W1C modeling, but `tb/ral/` is currently empty.
 6. **Stress depth 3 is configured but the present DUT run observes a maximum outstanding depth of 2.** This is still useful for credit and backpressure checking, but it is not evidence of three simultaneously accepted requests.
 7. **Black-box fallback is intentionally weaker.** The default C2 path is cycle-exact white-box; `+C2_BLACKBOX` retains end-to-end checks but cannot distinguish acceptance from delayed commit/snapshot under B/R backpressure.
 8. **C3.4 provenance is automated.** The overlay records build signatures, real parameters, test/seed/driver/outcome/log/DB/report and exact exit/UVM/SVA results; machine-readable gap triage distinguishes hit, parameter-only, constant-waiver-candidate, and unresolved items.
-9. **Sign-off documents are not closed.** `docs/verification_report.md` remains a template, and plan/traceability statuses have not been updated to match all implemented tests.
+9. **Sign-off remains approval-gated.** `docs/v4_c3_4_signoff_preparation.md` records evidence and candidates; `docs/verification_report.md` remains a template rather than an approved final report.
 10. **Repository is local-only.** The B2 checkpoint/tag and local history exist, but there is intentionally no remote; generated VCS artifacts remain untracked and no push is performed.
-11. **C3 closure is still not sign-off.** C3.4 improves real DUT and v4 infrastructure coverage without exclusions, but waiver approval, retained timing bins, `SPEC-MASK-001`, and the final verification report remain open.
+11. **C3 closure is still not sign-off.** C3.4 improves real DUT and v4 infrastructure coverage without exclusions and closes W1C 8/8, but waiver approval, retained timing candidates, scope decisions, and the final verification report remain open.
 
 ## Roadmap
 
-- Resolve `SPEC-MASK-001` in writing and align RTL comments, checks, and documentation.
-- Review the retained response-latency/depth-2 gaps and finish the partial data-category, W1C, and alias crosses without exclusions lacking rationale.
+- Preserve the written `SPEC-MASK-001` decision and keep golden-model expectations independent of DUT internals.
+- Preserve the seed43 W1C 8/8 evidence and review the retained response-latency waiver candidate without unapproved exclusions.
 - Use the C3.1 baseline and C3.2 grouped manifests/reports as the evidence base; do not reuse the historical seven-run URG snapshot as C2/v4 closure.
 - Implement a UVM register model with explicit alias prediction and volatile/W1C handling.
 - Add more randomized seeds, reset-in-stress scenarios, and coverage-directed closure tests.
@@ -387,7 +387,7 @@ The “v3.2” name is a project milestone used to describe the current stress/r
 
 ## Documentation
 
-- `docs/spec_analysis.txt`: behavior extracted from the RTL and the open polarity conflict.
+- `docs/spec_analysis.txt`: RTL-extracted behavior and the resolved MASK polarity decision, including the conflicting upstream comment.
 - `docs/verification_plan.txt`: scope, requirements, planned tests, assertions, coverage, and sign-off goals.
 - `docs/coverage_plan.txt`: coverage intent and closure targets.
 - `docs/traceability_matrix.csv`: requirement/test/assertion/coverage mapping.
@@ -401,6 +401,10 @@ The “v3.2” name is a project milestone used to describe the current stress/r
 - `docs/v4_c3_3_code_coverage_gap_analysis.md`: v3.2/v4 denominator proof, DUT-only covered/total, uncovered lines/branches/toggles, and C3.4 boundary.
 - `docs/v4_c3_3_parameter_negative.md`: parameter matrix, bad-slave/C2/W1C/reset selftests, final 28-run results, and reproduction.
 - `docs/v4_c3_4_coverage_gap_closure.md`: C3.3 checkpoint, C3.4 tests, exact DUT/TB before-after counts, gap triage, reproduction, and draft sign-off gaps.
+- `docs/v4_c3_4_signoff_preparation.md`: C3.4-B specification decision, directed closure status, structural waiver candidates, evidence table, and pending approvals.
+- `docs/v4_c3_4_dut_only_audit.md`: exact DUT-only covered/total metrics, line/condition/toggle/branch gap proofs, W1C per-bin audit, and report/source boundary.
+- `docs/v4_c3_4_waiver_register.md`: candidate-only waiver register with rationale, evidence, risk, applicability, and approval gates.
+- `docs/v4_final_verification_report_draft.md`: draft verification sign-off report; explicitly pending waiver and scope approval.
 - `manifests/c3_4_coverage_gap_triage.json`: machine-readable hit/parameter/constant/unresolved gap inventory and claim boundaries.
 
 ## Provenance and licensing
