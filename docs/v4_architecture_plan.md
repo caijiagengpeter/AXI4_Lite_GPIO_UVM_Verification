@@ -1,8 +1,9 @@
 # AXI4-Lite v4.0 架构规划与进度
 
-> 进度：2026-10-30 已完成 v4.0-B2.1～B2.3、C1 RTL timing analysis 以及 C2
+> 进度：2026-10-31 已完成 v4.0-B2.1～B2.3、C1 RTL timing analysis、C2 以及 C3.1
 > internal timing monitor/accepted tracker/独立 GPIO golden model/cycle-aware scoreboard，
-> 并完成真实 VCS 集成回归。C3 coverage closure 尚未开始。B2 真实落地细节和证据以
+> coverage infrastructure，并完成真实 VCS/URG 分组运行。C3.2 coverage closure、
+> C3.3 参数/负向扩展、C3.4 sign-off 尚未开始。B2 真实落地细节和证据以
 > [v4_driver_architecture.md](v4_driver_architecture.md) 第 16 节为准，C1 结论见
 > [v4_c1_rtl_timing_analysis.md](v4_c1_rtl_timing_analysis.md)，C2 见
 > [v4_c2_timing_scoreboard.md](v4_c2_timing_scoreboard.md)。
@@ -17,6 +18,8 @@ SVA/test slave 未改，旧 monitor API、sequence/test 类名保留。
 新工程已建立独立本地 Git checkpoint：`main` commit
 `e0e4a3001f9d533cc9d24e7695480926c8182cbb`，annotated tag
 `v4.0-b2-baseline`。不改写/移动该 tag，不重写历史，不创建 remote，也不 push GitHub。
+C2 checkpoint 为 commit `59187f90c871a530d020fa495ea4a836c52be8c5`、
+annotated tag `v4.0-c2-baseline`；C3.1 从该真实状态开始。
 
 ## 详细设计索引
 
@@ -29,6 +32,8 @@ SVA/test slave 未改，旧 monitor API、sequence/test 类名保留。
   semantics、逐周期表、现有 scoreboard 缺口及 C2 推荐分层。
 - [v4.0-C2 Timing Monitor and Scoreboard](v4_c2_timing_scoreboard.md)：event contract、
   epoch/FIFO tracker、independent model、fault self-test、cycle evidence 与真实回归结果。
+- [v4.0-C3.1 Coverage Infrastructure](v4_c3_1_coverage_infrastructure.md)：manifest、
+  compatible merge groups、真实 VCS/URG 指标、coverage claim 边界和剩余 gaps。
 
 ## C1/C2 状态（2026-10-30）
 
@@ -89,9 +94,11 @@ SVA/test slave 未改，旧 monitor API、sequence/test 类名保留。
   - read response 对应的 read snapshot 时点。
 - event 数据模型、Scoreboard/Reference Model 职责边界及 black-box fallback 已落地，详见 C2 文档。
 
-### 4. SVA 与 Coverage（SVA 保留，C3 coverage 待扩展）
+### 4. SVA 与 Coverage（C3.1 infrastructure 已完成，C3.2 待收敛）
 
 - 保留现有 SVA 与 coverage，不以删断言、缩小采样或放宽检查换取通过。
+- C3.1 已建立 18-run planned/actual manifest，并把 GPIO DUT、controlled slave、
+  lifecycle component、checker self-test 分成四个兼容 URG merge。
 - 在现有基础上扩展 channel 独立 backpressure、AW/W 不同到达顺序、response ordering、bounded outstanding、reset/abort 及跨事务场景覆盖。
 
 ### 5. Tests 与参数矩阵（组件级 3/4/8 已完成，参数矩阵待扩展）
@@ -109,7 +116,7 @@ SVA/test slave 未改，旧 monitor API、sequence/test 类名保留。
 
 ## C3 后续建议顺序
 
-1. 将 C2/v4 组件测试纳入独立 coverage merge，并增加更丰富 stall/reset/negative 矩阵。
-2. 扩展 deliberately bad-slave、orphan/duplicate snapshot 与 response-qualification 负向测试。
-3. 建立参数矩阵、RAL、machine-readable regression manifest 和 traceability/sign-off closure。
+1. C3.2 基于 C3.1 manifest/report 实现并收敛计划中的 functional bins，不通过删 bin 或 exclusion 提分。
+2. C3.3 建立参数矩阵并扩展 deliberately bad-slave、orphan/duplicate snapshot 与 response-qualification 负向测试。
+3. C3.4 完成 traceability、waiver review、最终报告和 sign-off；RAL 仍作为独立后续项。
 

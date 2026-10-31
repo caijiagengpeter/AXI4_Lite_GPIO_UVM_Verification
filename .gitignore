@@ -3,6 +3,7 @@
 csrc/
 *.vdb/
 coverage_report/
+/sim/c3_1_coverage*/
 DVEfiles/
 *.fsdb
 *.vcd
@@ -16,5 +17,6 @@ vc_hdrs.h
 # *.log, *.vdb/, coverage_report/, csrc/, and simv*.daidir/.
 
 # Temporary files
+__pycache__/
 *.swp
 *.tmp

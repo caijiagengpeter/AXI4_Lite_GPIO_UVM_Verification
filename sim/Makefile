@@ -11,11 +11,15 @@ VCS_COMMON_OPTS := -full64 -sverilog -ntb_opts uvm-1.2 \
 VCS_OPTS := $(VCS_COMMON_OPTS) -o $(SIMV) -l compile.log
 COV_TYPES := line+cond+fsm+tgl+branch+assert
 RUN_OPTS ?= +UVM_TESTNAME=axi4l_smoke_test +UVM_VERBOSITY=UVM_MEDIUM
+C3_PLAN  ?= ../manifests/c3_1_coverage_plan.json
+C3_OUT   ?= c3_1_coverage
+PYTHON   ?= python3.11
 
 .PHONY: all smoke gpio_smoke v2_directed v2_random v3_pipelined v3_mid_reset v3_stress \
 	v4_lifecycle_unit v4_channel_pipeline v4_response_order v4_depth3 v4_reset \
 	v3_stress_depth3 c2_timing c2_checker_selftest c2 \
-	regression coverage \
+	regression coverage coverage_manifest coverage_manifest_selftest \
+	coverage_v4 coverage_v4_gpio coverage_v4_bfm coverage_v4_checker \
 	coverage_clean compile run clean
 
 all: smoke
@@ -150,6 +154,33 @@ coverage: coverage_clean
 		+UVM_VERBOSITY=UVM_LOW -cm $(COV_TYPES) -cm_dir coverage.vdb \
 		-cm_name v3_stress_depth3 -l v3_stress_depth3_cov.log
 	$(VCS_HOME)/bin/urg -dir coverage.vdb -report coverage_report
+
+# C3.1 uses a separate output tree and never overwrites the preserved legacy
+# coverage.vdb/coverage_report pair above.  The optional sets are merged only
+# when top, elaboration parameters, build variant, and coverage object match.
+coverage_manifest:
+	$(PYTHON) ../scripts/coverage_manifest.py validate --plan $(C3_PLAN)
+	$(PYTHON) ../scripts/coverage_manifest.py plan --plan $(C3_PLAN) \
+		--output $(C3_OUT)/planned_manifest.json
+
+coverage_manifest_selftest:
+	$(PYTHON) ../scripts/test_coverage_manifest.py
+
+coverage_v4:
+	$(PYTHON) ../scripts/coverage_manifest.py run --plan $(C3_PLAN) \
+		--output-root $(C3_OUT) --sets all
+
+coverage_v4_gpio:
+	$(PYTHON) ../scripts/coverage_manifest.py run --plan $(C3_PLAN) \
+		--output-root $(C3_OUT) --sets gpio_dut
+
+coverage_v4_bfm:
+	$(PYTHON) ../scripts/coverage_manifest.py run --plan $(C3_PLAN) \
+		--output-root $(C3_OUT) --sets v4_bfm
+
+coverage_v4_checker:
+	$(PYTHON) ../scripts/coverage_manifest.py run --plan $(C3_PLAN) \
+		--output-root $(C3_OUT) --sets checker_selftest
 
 coverage_clean:
 	rm -rf $(COV_SIMV) $(COV_SIMV).daidir coverage.vdb coverage_report \

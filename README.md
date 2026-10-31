@@ -14,6 +14,7 @@ The current environment is a strong verification-development milestone, not a fo
 | Checking | External AW/W/AR accepted queues, real internal commit/snapshot timing, ordered/qualified responses, pin checking, reset epochs, and orphan/duplicate/missing audits |
 | Assertions | AXI stability/response checks, reset checks, synchronizer checks, interrupt relation, W1C/sticky checks, and activation cover properties |
 | Functional coverage | AXI request shape plus observed GPIO edge/output/interrupt coverage; the implemented groups reached 100% in the recorded run |
+| Coverage infrastructure | C3.1 machine-readable planned/actual manifest, four compatible coverage-object merges, reproducible URG reports, and explicit GPIO/test-slave claim separation |
 | Pipelining and stress | v4 受控 slave 实测 write/read depth 3、4、8；GPIO DUT 的 v3 depth-2/3 stress 仍只观察到最大 2，二者不混报 |
 | RAL | Planned, not implemented |
 | Formal sign-off | Not claimed; the `MASK` polarity conflict and coverage/parameter gaps remain open |
@@ -150,6 +151,7 @@ The mid-reset test covers a partial write, pending B response, pending R respons
 - GNU Make
 - Synopsys VCS with UVM 1.2 support
 - Synopsys URG for coverage reporting
+- Python 3.11 (available as `python3.11` in the validated Rocky 8.10 image)
 
 The checked Makefile defaults to VCS `V-2023.12-SP1` under `/opt/Synopsys/vcs/V-2023.12-SP1`. Override `VCS_HOME` when the installation is elsewhere.
 
@@ -184,6 +186,18 @@ make regression
 make coverage
 ```
 
+C3.1 infrastructure and full grouped run:
+
+    make coverage_manifest_selftest
+    make coverage_manifest
+    make coverage_v4
+
+Optional C3.1 subsets use a fresh output name, for example:
+
+    make coverage_v4_gpio C3_OUT=c3_1_gpio_run
+    make coverage_v4_bfm C3_OUT=c3_1_bfm_run
+    make coverage_v4_checker C3_OUT=c3_1_checker_run
+
 Example with a different VCS installation:
 
 ```bash
@@ -197,14 +211,20 @@ make smoke RUN_OPTS="+UVM_TESTNAME=axi4l_gpio_v2_random_test \
   +UVM_VERBOSITY=UVM_LOW +ntb_random_seed=42"
 ```
 
-The generated coverage dashboard is `sim/coverage_report/dashboard.html`.
+The preserved legacy dashboard is `sim/coverage_report/dashboard.html`.
+C3.1 writes `sim/c3_1_coverage/manifest.json`, `overview.md`, four
+independent merged VDBs, and per-group dashboards under `reports/`; it does
+not overwrite the legacy report.
 
 ### Regression versus coverage targets
 
-The two Make targets are complementary:
+The regression and coverage targets are complementary:
 
 - `make regression` runs 15 tests: smoke/GPIO smoke, v2 directed/random, v3 pipeline/reset/stress, five v4 lifecycle/component/reset tests, C2 timing, W1C collision, and the isolated checker self-test.
 - `make coverage` runs v2 directed, v2 random with seed 1, bit 3/4 closure, W1C collision, request-stall closure, and v3 stress at configured depths 2 and 3.
+- `make coverage_v4` runs 18 manifest rows and merges GPIO DUT (12),
+  controlled slave (4), lifecycle component (1), and checker self-test (1)
+  separately. The controlled-slave report is not a GPIO DUT RTL claim.
 
 ## Recorded coverage snapshot
 
@@ -301,22 +321,22 @@ The “v3.2” name is a project milestone used to describe the current stress/r
 5. **RAL is not implemented.** The plan describes alias, volatile, and W1C modeling, but `tb/ral/` is currently empty.
 6. **Stress depth 3 is configured but the present DUT run observes a maximum outstanding depth of 2.** This is still useful for credit and backpressure checking, but it is not evidence of three simultaneously accepted requests.
 7. **Black-box fallback is intentionally weaker.** The default C2 path is cycle-exact white-box; `+C2_BLACKBOX` retains end-to-end checks but cannot distinguish acceptance from delayed commit/snapshot under B/R backpressure.
-8. **Coverage evidence needs stronger provenance.** The report should record the Git commit, seed, complete parameter set, mask semantic mode, and pass/fail manifest in a machine-readable regression summary.
+8. **C3.1 provenance is automated but is not a parameter matrix.** The manifest records Git/tool/test/seed/default parameters/driver/outcome/log/DB/report and exact exit/UVM/SVA results; alternate elaborations and mask-policy closure remain C3.3/C3.4 work.
 9. **Sign-off documents are not closed.** `docs/verification_report.md` remains a template, and plan/traceability statuses have not been updated to match all implemented tests.
 10. **Repository is local-only.** The B2 checkpoint/tag and local history exist, but there is intentionally no remote; generated VCS artifacts remain untracked and no push is performed.
-11. **C3 negative/coverage closure is incomplete.** C2 self-test proves checker sensitivity, but a broader deliberately non-compliant slave matrix and C2/v4 coverage merge remain future work.
+11. **C3 closure is incomplete.** C3.1 provides separate C2/v4/GPIO/checker coverage merges, but C3.2 bin closure, C3.3 parameter/bad-slave expansion, and C3.4 sign-off remain future work.
 
 ## Roadmap
 
 - Resolve `SPEC-MASK-001` in writing and align RTL comments, checks, and documentation.
 - Expand functional coverage to the planned WSTRB/register, AW/W gap, backpressure, W1C, interrupt, reset-state, and occupancy crosses.
 - Add automated parameter regressions for `NIN`, `NOUT`, skid-buffer, low-power, and default-output configurations.
-- Add C2/v4 runs to a new coverage merge; do not reuse the historical seven-run URG snapshot as C2 closure.
+- Use the C3.1 grouped manifests/reports as the evidence base; do not reuse the historical seven-run URG snapshot as C2/v4 closure.
 - Implement a UVM register model with explicit alias prediction and volatile/W1C handling.
 - Add more randomized seeds, reset-in-stress scenarios, and coverage-directed closure tests.
 - Add a bad-slave negative suite and a separate v4 component coverage merge.
 - Review code/assertion exclusions and close or justify uncovered legal behavior.
-- Generate a regression manifest containing commit, tool version, seed, parameters, test result, assertion summary, and coverage database name.
+- Extend the C3.1 manifest with reviewed parameter variants only in C3.3.
 - Complete the traceability matrix and final verification report, then define formal sign-off criteria.
 - Keep simulator-generated artifacts untracked and add CI/lint automation where licensed tools are available.
 
@@ -331,6 +351,7 @@ The “v3.2” name is a project milestone used to describe the current stress/r
 - `docs/verification_report.md`: final-report template; not yet a completed sign-off report.
 - `docs/v4_c1_rtl_timing_analysis.md`: RTL timing and NBA sampling analysis.
 - `docs/v4_c2_timing_scoreboard.md`: C2 event contract, implementation, cycle evidence, regression results, and C3 boundary.
+- `docs/v4_c3_1_coverage_infrastructure.md`: C3.1 schema, compatible groups, real VCS/URG results, claim boundaries, and remaining C3.2-C3.4 gaps.
 
 ## Provenance and licensing
 

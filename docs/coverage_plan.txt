@@ -2,7 +2,9 @@ AXI4-Lite GPIO Functional Coverage Plan
 =======================================
 
 Baseline: docs/verification_plan.txt v1.0, Section 14
-Initial state: planning only; no coverage results are recorded here.
+C3.1 state: collection/manifest/compatible URG grouping is implemented and
+recorded in docs/v4_c3_1_coverage_infrastructure.md. The planned functional
+items below remain PLANNED until C3.2 implements and reviews their bins.
 
 Field definitions
 -----------------
@@ -13,6 +15,16 @@ Bins/Intent           Reachable scenarios that must be distinguished.
 Goal                  Closure target from the frozen plan.
 Status                PLANNED until implementation and reviewed results exist.
 Notes                 Sampling constraints, exclusions, or dependencies.
+
+C3.1 evidence boundary
+----------------------
+The 2026-10-31 run has 18/18 PASS and four separate coverage-object reports:
+GPIO DUT default, v4 controlled slave, v4 lifecycle component, and controlled
+checker self-test. GPIO line/condition/toggle/branch is
+81.39/69.90/62.16/76.15%; the two currently implemented groups report 100%.
+That group score is not coverage-plan closure. FSM is N/A. No item below is
+promoted from PLANNED by C3.1, and controlled-slave coverage is not GPIO RTL
+coverage.
 
 
 Coverage ID: COV-AXI-001
@@ -110,6 +122,6 @@ Closure policy
 The frozen plan's initial target is at least 95% overall functional coverage
 and 100% on reachable critical register, WSTRB, AW/W-ordering, W1C, and
 interrupt-polarity bins. Any exclusion, unreachable bin, or goal adjustment
-requires review and a recorded rationale. Actual results remain TBD until a
-regression and coverage merge are completed.
+requires review and a recorded rationale. C3.1 provides reproducible actual
+collection and grouping; coverage-plan closure remains TBD for C3.2-C3.4.
 

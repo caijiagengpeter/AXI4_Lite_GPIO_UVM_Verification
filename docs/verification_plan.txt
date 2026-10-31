@@ -864,6 +864,10 @@ Level 4 - Coverage closure/sign-off
 Always log seed, parameter set, simulator version, git commit, test name, mask
 semantic mode, assertion summary, and coverage database identifier.
 
+C3.1 implements this provenance for the default elaboration in
+manifests/c3_1_coverage_plan.json and the generated planned/actual manifest.
+Alternate parameter sets and final semantic/sign-off decisions remain open.
+
 
 18. Completion/sign-off criteria
 --------------------------------
@@ -927,7 +931,8 @@ Random stress           RND-001..003                     merged coverage
   [ ] Resolve or formally track SPEC-MASK-001.
   [ ] Agree on expected read-during-write timing for same-address concurrency.
   [ ] Confirm reset is intentionally synchronous to S_AXI_ACLK.
-  [ ] Decide simulator/UVM version and coverage tools.
+  [x] Decide simulator/UVM version and coverage tools: VCS V-2023.12-SP1,
+      UVM 1.2, and URG V-2023.12-SP1 for the recorded C3.1 run.
   [ ] Freeze interface signal naming and transaction classes.
   [ ] Implement ordered AW/W FIFOs and configurable outstanding/pipeline mode.
   [ ] Implement configurable mask polarity in the reference model.

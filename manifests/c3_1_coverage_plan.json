@@ -1,0 +1,161 @@
+{
+  "schema_version": "1.0",
+  "phase": "AXI4-Lite v4.0-C3.1",
+  "description": "Infrastructure only: collection, planned/actual manifest, compatible grouping, URG merge and overview.",
+  "tool_defaults": {"vcs_home": "/opt/Synopsys/vcs/V-2023.12-SP1", "coverage_types": "line+cond+fsm+tgl+branch+assert"},
+  "source_inventory": {
+    "legacy_coverage": "Seven GPIO/v2/v3 runs in make coverage; preserved and not relabelled as C2/v4.",
+    "gpio_v3_c2": "Default GPIO DUT smoke/v2/v3 plus C2 timing.",
+    "v4_controlled_slave": "Independent controlled-slave runs; never GPIO DUT RTL coverage.",
+    "v4_lifecycle": "BFM lifecycle component unit test; no GPIO DUT depth claim.",
+    "checker_selftest": "Controlled monitor fault injection with positive checker-detection semantics."
+  },
+  "builds": {
+    "tb_top_default": {
+      "top": "tb_top",
+      "filelist": "filelist.f",
+      "compile_config": "VCS UVM-1.2 default tb_top elaboration",
+      "compile_options": [],
+      "dut_parameters": {"C_AXI_ADDR_WIDTH": 5, "DATA_WIDTH": 32, "NOUT": 30, "NIN": 5, "DEFAULT_OUTPUT": "0x00000000", "OPT_SKIDBUFFER": 1, "OPT_LOWPOWER": 0, "v4_test_slave_MAX_DEPTH": 8}
+    }
+  },
+  "merge_groups": {
+    "gpio_dut_default": {"coverage_object": "gpio_dut_rtl_default", "coverage_claim": "Default GPIO DUT integration; controlled-slave results excluded."},
+    "v4_controlled_slave": {"coverage_object": "v4_bfm_controlled_slave", "coverage_claim": "v4 BFM plus controlled slave only; not GPIO DUT RTL coverage."},
+    "v4_lifecycle_component": {"coverage_object": "v4_lifecycle_component", "coverage_claim": "v4 lifecycle component; not GPIO DUT depth coverage."},
+    "checker_selftest": {"coverage_object": "c2_checker_fault_injection", "coverage_claim": "Controlled checker faults, isolated from normal GPIO claims."}
+  },
+  "runs": [
+    {
+      "id": "gpio_smoke_seed1", "set": "gpio_dut", "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_smoke_test", "target": "smoke", "seed": 1,
+      "execution_target": "GPIO DUT RTL", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "legacy_serial", "runtime_parameters": {},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": []}, "plusargs": []
+    },
+    {
+      "id": "gpio_agent_smoke_seed2", "set": "gpio_dut", "merge_group": "gpio_dut_default",
+      "test_name": "gpio_agent_smoke_test", "target": "gpio_smoke", "seed": 2,
+      "execution_target": "GPIO DUT RTL", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "legacy_serial", "runtime_parameters": {},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": []}, "plusargs": []
+    },
+    {
+      "id": "gpio_v2_directed_seed3", "set": "gpio_dut", "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_gpio_v2_directed_test", "target": "v2_directed", "seed": 3,
+      "execution_target": "GPIO DUT RTL", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "legacy_serial", "runtime_parameters": {},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": []}, "plusargs": []
+    },
+    {
+      "id": "gpio_v2_random_seed1", "set": "gpio_dut", "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_gpio_v2_random_test", "target": "v2_random", "seed": 1,
+      "execution_target": "GPIO DUT RTL", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "legacy_serial", "runtime_parameters": {},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": []}, "plusargs": []
+    },
+    {
+      "id": "gpio_bit34_seed4", "set": "gpio_dut", "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_gpio_bit34_coverage_test", "target": "coverage_legacy_subrun", "seed": 4,
+      "execution_target": "GPIO DUT RTL", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "legacy_serial", "runtime_parameters": {},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": []}, "plusargs": []
+    },
+    {
+      "id": "gpio_w1c_collision_seed5", "set": "gpio_dut", "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_gpio_w1c_hw_collision_test", "target": "c2", "seed": 5,
+      "execution_target": "GPIO DUT RTL", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "legacy_serial", "runtime_parameters": {},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": []}, "plusargs": []
+    },
+    {
+      "id": "gpio_request_stall_seed6", "set": "gpio_dut", "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_request_stall_test", "target": "coverage_legacy_subrun", "seed": 6,
+      "execution_target": "GPIO DUT RTL", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "limited_overlap", "runtime_parameters": {},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": []}, "plusargs": []
+    },
+    {
+      "id": "gpio_v3_pipeline_seed7", "set": "gpio_dut", "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_v3_pipelined_test", "target": "v3_pipelined", "seed": 7,
+      "execution_target": "GPIO DUT RTL", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "v3_pipelined", "runtime_parameters": {"max_write_outstanding": 3, "max_read_outstanding": 3},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": []}, "plusargs": []
+    },
+    {
+      "id": "gpio_v3_mid_reset_seed8", "set": "gpio_dut", "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_v3_mid_reset_test", "target": "v3_mid_reset", "seed": 8,
+      "execution_target": "GPIO DUT RTL", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "v3_pipelined", "runtime_parameters": {"max_write_outstanding": 2, "max_read_outstanding": 2},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": []}, "plusargs": []
+    },
+    {
+      "id": "gpio_v3_stress_depth2_seed9", "set": "gpio_dut", "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_v3_stress_test", "target": "v3_stress", "seed": 9,
+      "execution_target": "GPIO DUT RTL", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "v3_pipelined", "runtime_parameters": {"V3_STRESS_DEPTH": 2},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": []}, "plusargs": []
+    },
+    {
+      "id": "gpio_v3_stress_depth3_seed10", "set": "gpio_dut", "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_v3_stress_test", "target": "v3_stress_depth3", "seed": 10,
+      "execution_target": "GPIO DUT RTL", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "v3_pipelined", "runtime_parameters": {"V3_STRESS_DEPTH": 3},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": []}, "plusargs": ["+V3_STRESS_DEPTH=3"]
+    },
+    {
+      "id": "gpio_c2_timing_seed11", "set": "gpio_dut", "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_c2_timing_test", "target": "c2_timing", "seed": 11,
+      "execution_target": "GPIO DUT RTL with read-only timing adapter", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "v4_depth4", "runtime_parameters": {"max_write_outstanding": 4, "max_read_outstanding": 4},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": ["[C2_CYCLE_EVIDENCE]"]}, "plusargs": []
+    },
+    {
+      "id": "v4_lifecycle_seed12", "set": "v4_bfm", "merge_group": "v4_lifecycle_component",
+      "test_name": "axi4l_v4_lifecycle_unit_test", "target": "v4_lifecycle_unit", "seed": 12,
+      "execution_target": "v4 lifecycle service component", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "v4_lifecycle_component", "driver_mode": "component_unit", "runtime_parameters": {},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": []}, "plusargs": []
+    },
+    {
+      "id": "v4_pipeline_depth8_seed13", "set": "v4_bfm", "merge_group": "v4_controlled_slave",
+      "test_name": "axi4l_v4_channel_pipeline_test", "target": "v4_channel_pipeline", "seed": 13,
+      "execution_target": "controlled test slave", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "v4_bfm_controlled_slave", "driver_mode": "v4_depth8", "runtime_parameters": {"V4_SLAVE_DEPTH": 8},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": ["[V4_DEPTH_PROOF]", "write=8 read=8"]}, "plusargs": ["+V4_TEST_SLAVE", "+V4_SLAVE_DEPTH=8"]
+    },
+    {
+      "id": "v4_response_order_depth4_seed14", "set": "v4_bfm", "merge_group": "v4_controlled_slave",
+      "test_name": "axi4l_v4_response_order_test", "target": "v4_response_order", "seed": 14,
+      "execution_target": "controlled test slave", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "v4_bfm_controlled_slave", "driver_mode": "v4_depth4", "runtime_parameters": {"V4_SLAVE_DEPTH": 4},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": []}, "plusargs": ["+V4_TEST_SLAVE", "+V4_SLAVE_DEPTH=4"]
+    },
+    {
+      "id": "v4_depth3_seed15", "set": "v4_bfm", "merge_group": "v4_controlled_slave",
+      "test_name": "axi4l_v4_depth3_test", "target": "v4_depth3", "seed": 15,
+      "execution_target": "controlled test slave", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "v4_bfm_controlled_slave", "driver_mode": "v4_depth3", "runtime_parameters": {"V4_SLAVE_DEPTH": 3},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": []}, "plusargs": ["+V4_TEST_SLAVE", "+V4_SLAVE_DEPTH=3"]
+    },
+    {
+      "id": "v4_reset_depth2_seed16", "set": "v4_bfm", "merge_group": "v4_controlled_slave",
+      "test_name": "axi4l_v4_reset_test", "target": "v4_reset", "seed": 16,
+      "execution_target": "controlled test slave", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "v4_bfm_controlled_slave", "driver_mode": "v4_depth2", "runtime_parameters": {"V4_SLAVE_DEPTH": 2},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": ["[V4_RESET_PASS]"]}, "plusargs": ["+V4_TEST_SLAVE", "+V4_SLAVE_DEPTH=2"]
+    },
+    {
+      "id": "c2_checker_selftest_seed17", "set": "checker_selftest", "merge_group": "checker_selftest",
+      "test_name": "axi4l_c2_checker_selftest", "target": "c2_checker_selftest", "seed": 17,
+      "execution_target": "GPIO DUT plus controlled monitor fault injection", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "c2_checker_fault_injection", "driver_mode": "limited_overlap", "runtime_parameters": {},
+      "expected_outcome": {
+        "kind": "controlled_checker_faults",
+        "fault_injection": ["orphan_commit", "duplicate_commit", "missing_commit", "stale_epoch", "unqualified_B"],
+        "required_markers": ["[C2_SELFTEST_PASS]", "orphan=1", "duplicate=1", "missing=1", "stale=1", "unqualified_B=1"]
+      },
+      "plusargs": []
+    }
+  ]
+}
