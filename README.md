@@ -8,7 +8,7 @@ The current environment is a strong verification-development milestone, not a fo
 
 | Area | Current status |
 |---|---|
-| AXI4-Lite master agent | Active/passive UVM agent；保留 legacy/limited/v3，并新增显式 v4 channel mode：bounded Dispatcher、独立 AW/W/AR workers、ordered B/R collectors、single Publisher 与 epoch reset |
+| AXI4-Lite master agent | Active/passive UVM agent retaining legacy, limited, and v3 modes, with an explicit v4 channel mode featuring a bounded dispatcher, independent AW/W/AR workers, ordered B/R collectors, a single publisher, and epoch-based reset handling |
 | GPIO agent | Active/passive stimulus and cycle-by-cycle observation |
 | Reference model | C2 independent cycle model for GPIO output, input synchronization, `CHANGED`, `MASK`, `INT`, and registered `o_int`; expected values never come from DUT internal data |
 | Checking | External AW/W/AR accepted queues, real internal commit/snapshot timing, ordered/qualified responses, pin checking, reset epochs, and orphan/duplicate/missing audits |
@@ -17,7 +17,16 @@ The current environment is a strong verification-development milestone, not a fo
 | Coverage infrastructure | C3.3 is frozen at `v4.0-c3.3-baseline`; the reviewed C3.4 matrix has 7 isolated builds, 51 reproducible runs, 12 compatible merge groups, and strict DUT/parameter/component/negative claim separation |
 | Pipelining and stress | v4 controlled slave proves write/read depth 3, 4, 8 and reset at actual 2/2; GPIO DUT v3 depth-2/3 stress still observes max 2, and the objects are not merged |
 | RAL | Planned, not implemented |
-| Formal sign-off | Not claimed; `SPEC-MASK-001` is resolved, while W1C evidence, waiver approvals, RAL/CI scope decisions, and final report approval remain open |
+| Formal sign-off | Not claimed; `SPEC-MASK-001` is resolved and W1C coverage is complete at 8/8, while waiver owner approvals, RAL/CI scope decisions, and final report approval remain pending |
+
+### Latest verified coverage
+
+| Evidence | Verified result |
+|---|---|
+| Execution | C3.4-A: 51/51 runs and 12/12 compatible merges PASS; latest C3.4-B seed43 delta: PASS |
+| Compatible C3.4-A + seed43 merge | Overall URG 81.39%; Group 99.64%; W1C data x strobe x hardware cross 8/8 |
+| DUT evidence boundary | The 81.39% overall score includes testbench infrastructure and is not DUT-only. The separate raw GPIO DUT RTL audit is retained; the `tb_top.dut` subtree score is 89.14% and includes bound SVA. |
+| Approval status | No exclusions or waivers are approved; owner approvals, release-scope decisions, and final report approval remain pending. |
 
 ## DUT overview
 
@@ -43,7 +52,7 @@ With `NIN > 0`, the register map is:
 | `0x0C` | `TOGGLE` | RW / read alias | Toggle written output bits; reads return the current output |
 | `0x10` | `INPUT` | RO | Return the synchronized GPIO input |
 | `0x14` | `CHANGED` | W1C | Sticky input-change status; a concurrent hardware change wins over software clear |
-| `0x18` | `MASK` | RW | Interrupt-control bits; current RTL behavior is described in the open issue below |
+| `0x18` | `MASK` | RW | Interrupt control: bit 1 enables the corresponding IRQ and bit 0 masks it, per the resolved RTL-derived project decision; upstream RTL comments document the opposite polarity |
 | `0x1C` | `INT` | RO | Return the implemented active interrupt vector |
 
 `WSTRB` is honored byte by byte. Address bits `[1:0]` are ignored, so unaligned addresses alias their containing 32-bit word. The DUT always returns AXI `OKAY`; it has no `SLVERR` or `DECERR` path. With `NIN=0`, the upper four word addresses alias the four output operations and `o_int` remains low.
@@ -133,11 +142,11 @@ Digital simulation checks the synchronizer's sampled behavior only. It does not 
 | `axi4l_v3_pipelined_test` | Ordered write/read overlap with delayed responses and AW/W order variations |
 | `axi4l_v3_mid_reset_test` | Six reset-in-flight scenarios plus a checked post-reset recovery after each scenario |
 | `axi4l_v3_stress_test` | 104-request pipeline/backpressure stress, read snapshots, FIFO ordering, credit accounting, and drain checks |
-| `axi4l_v4_lifecycle_unit_test` | Terminal/credit/epoch/reset 的隔离单元测试 |
-| `axi4l_v4_channel_pipeline_test` | 受控 depth-8 slave；跨事务 AW/W overlap、W-before-AW、mixed traffic、stall stability 与实际 8/8 outstanding |
-| `axi4l_v4_response_order_test` | 受控 depth-4 slave；无 AXI ID 条件下的方向 FIFO response association |
-| `axi4l_v4_depth3_test` | 受控 depth-3 组件级边界运行 |
-| `axi4l_v4_reset_test` | AW-only、W-only、pending B/R、credit wait、normal-but-unpublished、actual write/read depth2-both reset、exactly-once 与逐场景 recovery |
+| `axi4l_v4_lifecycle_unit_test` | Isolated unit tests for transaction terminal states, credits, reset epochs, and reset handling |
+| `axi4l_v4_channel_pipeline_test` | Controlled depth-8 slave validating cross-transaction AW/W overlap, W-before-AW ordering, mixed traffic, stall stability, and measured 8-write/8-read outstanding concurrency |
+| `axi4l_v4_response_order_test` | Controlled depth-4 slave validating per-direction FIFO response association without AXI transaction IDs |
+| `axi4l_v4_depth3_test` | Controlled depth-3 component-level boundary test |
+| `axi4l_v4_reset_test` | Reset scenarios covering AW-only, W-only, pending B/R responses, credit waits, normal-but-unpublished transactions, simultaneous two-write/two-read outstanding requests, exactly-once completion, and per-scenario recovery |
 | `axi4l_c2_timing_test` | Non-zero buffered SET/CLEAR/TOGGLE, B/R backpressure, delayed snapshot, intervening write, same-edge read/write, and reset while buffered |
 | `axi4l_c3_2_coverage_test` | Six legal writable registers x all 16 explicit WSTRB patterns, AW/W gap/backpressure classes, and MASK/IRQ path; seed 21 |
 | `axi4l_c3_2_timing_closure_test` | Scoreboard-checked 1/short/moderate real commit/read-snapshot latency closure; seed 22 |
@@ -267,13 +276,15 @@ The regression and coverage targets are complementary:
   controlled slave (4), lifecycle component (1), and checker self-test (1)
   separately. The controlled-slave report is not a GPIO DUT RTL claim.
 
-## Recorded coverage snapshot
+## Historical seven-test coverage snapshot
+
+The snapshot below is the preserved legacy seven-test `make coverage` result (overall 80.45%). It is historical evidence, not the current C3.4-B result. The latest compatible C3.4-A + seed43 merge is summarized above at overall 81.39%, Group 99.64%, and W1C 8/8.
 
 - `make coverage_c3_2` resolves the C3.2 overlay into 21 rows: the unchanged
   C3.1 inventory plus three GPIO closure rows at seeds 21/22/23. It preserves
   the same four incompatible coverage-object boundaries.
 
-The repository contains the following URG report snapshot:
+The repository contains the following historical URG report snapshot:
 
 | Field | Recorded value |
 |---|---|
@@ -293,7 +304,7 @@ The seven instrumented runs are:
 6. `axi4l_v3_stress_test` with depth 2
 7. `axi4l_v3_stress_test` with depth 3
 
-### Total coverage
+### Historical total coverage
 
 | Score | Line | Condition | Toggle | FSM | Branch | Assert | Group |
 |---:|---:|---:|---:|---:|---:|---:|---:|
@@ -320,7 +331,7 @@ The report does not embed a Git revision or a complete parameter matrix. Treat t
 
 ## Development evolution
 
-`/home/ray/AXI4_Lite_New` is an independent local Git repository beginning with the `v4.0-b2-baseline` checkpoint. It does not inherit the old project's history and has no configured remote. Earlier stages below are reconstructed from the design notes, class names, implemented tests, and the read-only v3.2 backup; they are development milestones, not a claim of tag-by-tag Git history.
+`/home/ray/AXI4_Lite_New` is an independent Git repository beginning with the `v4.0-b2-baseline` checkpoint. It does not inherit the old project's history and has a public `origin` at `https://github.com/caijiagengpeter/AXI4_Lite_GPIO_UVM_Verification.git`. Earlier stages below are reconstructed from the design notes, class names, implemented tests, and the read-only v3.2 backup; they are development milestones, not a claim of tag-by-tag Git history. Working-tree documentation edits remain local until the user explicitly commits and pushes them.
 
 | Milestone | Main change |
 |---|---|
@@ -333,6 +344,7 @@ The report does not embed a Git revision or a complete parameter matrix. Treat t
 | v4.0-C2 cycle-exact checking | Minimal read-only timing adapter, accepted-request tracker, independent GPIO golden model, commit/snapshot-driven scoreboard, checker self-test, and real VCS regression |
 | v4.0-C3.1/C3.2 coverage | Manifest-driven compatible grouping plus observed functional closure and a frozen local C3.2 checkpoint |
 | v4.0-C3.3 parameter/negative | Six checked GPIO parameter configurations, dedicated eight-fault bad-slave detector, expanded C2/W1C/reset selftests, and evidence-based code-gap analysis |
+| v4.0-C3.4 coverage closure | C3.4-A 51/51-run matrix, directed DUT/v4 payload closure, and the compatible C3.4-B seed43 delta that closes the W1C cross at 8/8 while preserving raw gaps and approval gates |
 
 The “v3.2” name is a project milestone used to describe the current stress/reset/pipelining state; it is not presently a Git tag.
 
@@ -359,7 +371,7 @@ The “v3.2” name is a project milestone used to describe the current stress/r
 └── docs/                    # Plan, requirements, issues, traceability, and report template
 ```
 
-## Known limitations and open issues
+## Known limitations and status items
 
 1. **`SPEC-MASK-001` is resolved by project decision (2026-10-31).** MASK=1 enables and MASK=0 masks, matching `r_mask & toggled`; upstream RTL comments state the opposite and are recorded as conflicting documentation. The DUT is unchanged and this is not a coverage waiver.
 2. **C3.4 functional coverage is not final sign-off.** The compatible C3.4-A + seed43 report is Group 99.64%; the two exact strobe-off/hardware-change bins are independently checked and the W1C cross is now verified 8/8. Waiver and final-report approvals remain open.
@@ -370,14 +382,14 @@ The “v3.2” name is a project milestone used to describe the current stress/r
 7. **Black-box fallback is intentionally weaker.** The default C2 path is cycle-exact white-box; `+C2_BLACKBOX` retains end-to-end checks but cannot distinguish acceptance from delayed commit/snapshot under B/R backpressure.
 8. **C3.4 provenance is automated.** The overlay records build signatures, real parameters, test/seed/driver/outcome/log/DB/report and exact exit/UVM/SVA results; machine-readable gap triage distinguishes hit, parameter-only, constant-waiver-candidate, and unresolved items.
 9. **Sign-off remains approval-gated.** `docs/v4_c3_4_signoff_preparation.md` records evidence and candidates; `docs/verification_report.md` remains a template rather than an approved final report.
-10. **Repository is local-only.** The B2 checkpoint/tag and local history exist, but there is intentionally no remote; generated VCS artifacts remain untracked and no push is performed.
+10. **Repository publication is user-controlled.** A public GitHub `origin` is configured; generated VCS artifacts remain ignored, and working-tree documentation changes are not considered published until the user explicitly commits and pushes them.
 11. **C3 closure is still not sign-off.** C3.4 improves real DUT and v4 infrastructure coverage without exclusions and closes W1C 8/8, but waiver approval, retained timing candidates, scope decisions, and the final verification report remain open.
 
 ## Roadmap
 
 - Preserve the written `SPEC-MASK-001` decision and keep golden-model expectations independent of DUT internals.
-- Preserve the seed43 W1C 8/8 evidence and review the retained response-latency waiver candidate without unapproved exclusions.
-- Use the C3.1 baseline and C3.2 grouped manifests/reports as the evidence base; do not reuse the historical seven-run URG snapshot as C2/v4 closure.
+- Retain the C3.4-A 51/51-run evidence and compatible seed43 W1C 8/8 delta, and review the response-latency waiver candidate without unapproved exclusions.
+- Use the C3.4 audit and compatible grouped reports as the current closure evidence; retain the seven-run URG snapshot only as a historical baseline, not as C2/v4 closure.
 - Implement a UVM register model with explicit alias prediction and volatile/W1C handling.
 - Add more randomized seeds, reset-in-stress scenarios, and coverage-directed closure tests.
 - Review code/assertion exclusions and close or justify uncovered legal behavior.
@@ -409,5 +421,5 @@ The “v3.2” name is a project milestone used to describe the current stress/r
 
 ## Provenance and licensing
 
-`dut/rtl/axilgpio.v` and `dut/rtl/skidbuffer.v` originate from the ZipCPU WB2AXIP project and carry Apache License 2.0 notices in their source headers. The repository currently has no root `LICENSE` file covering the verification environment. Add an explicit project license and preserve all upstream notices before redistributing or accepting external contributions.
+`dut/rtl/axilgpio.v`, `dut/rtl/skidbuffer.v`, and their preserved copies under `original/zipcpu/` originate from the ZipCPU WB2AXIP project and retain Apache License 2.0 notices in their source headers. The repository currently has no root `LICENSE` file defining a license for the verification environment; no license is inferred for unrelated project code. Preserve all upstream notices, and obtain an explicit project licensing decision before redistributing the verification environment or accepting external contributions.
 
