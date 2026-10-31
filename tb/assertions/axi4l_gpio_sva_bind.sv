@@ -1,6 +1,24 @@
 `timescale 1ns/1ps
 `default_nettype none
 
+`ifdef C3_GPIO_NIN_ZERO
+bind axilgpio axi4l_protocol_sva #(
+  .ADDR_WIDTH(C_AXI_ADDR_WIDTH),
+  .DATA_WIDTH(C_AXI_DATA_WIDTH)
+) axi4l_protocol_sva_i (
+  .clk(S_AXI_ACLK), .reset_n(S_AXI_ARESETN),
+  .awaddr(S_AXI_AWADDR), .awprot(S_AXI_AWPROT),
+  .awvalid(S_AXI_AWVALID), .awready(S_AXI_AWREADY),
+  .wdata(S_AXI_WDATA), .wstrb(S_AXI_WSTRB),
+  .wvalid(S_AXI_WVALID), .wready(S_AXI_WREADY),
+  .bresp(S_AXI_BRESP), .bvalid(S_AXI_BVALID), .bready(S_AXI_BREADY),
+  .araddr(S_AXI_ARADDR), .arprot(S_AXI_ARPROT),
+  .arvalid(S_AXI_ARVALID), .arready(S_AXI_ARREADY),
+  .rdata(S_AXI_RDATA), .rresp(S_AXI_RRESP),
+  .rvalid(S_AXI_RVALID), .rready(S_AXI_RREADY),
+  .write_accept(axil_write_ready), .read_accept(axil_read_ready)
+);
+`else
 bind axilgpio axi4l_gpio_sva #(
   .ADDR_WIDTH    (C_AXI_ADDR_WIDTH),
   .DATA_WIDTH    (C_AXI_DATA_WIDTH),
@@ -43,5 +61,6 @@ bind axilgpio axi4l_gpio_sva #(
   .changed        (INPUT_HANDLING.toggled),
   .mask           (INPUT_HANDLING.r_mask)
 );
+`endif
 
 `default_nettype wire

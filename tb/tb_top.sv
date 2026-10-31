@@ -6,6 +6,8 @@ module tb_top;
   import axi4l_gpio_tb_cfg_pkg::GPIO_NOUT;
   import axi4l_gpio_tb_cfg_pkg::GPIO_NIN;
   import axi4l_gpio_tb_cfg_pkg::GPIO_DEFAULT_OUTPUT;
+  import axi4l_gpio_tb_cfg_pkg::GPIO_OPT_SKIDBUFFER;
+  import axi4l_gpio_tb_cfg_pkg::GPIO_OPT_LOWPOWER;
   import axi4l_agent_pkg::*;
   import axi4l_env_pkg::*;
   import axi4l_test_pkg::*;
@@ -16,7 +18,7 @@ module tb_top;
   localparam int NIN        = GPIO_NIN;
 
   logic            clk;
-  logic [NIN-1:0]  i_gpio;
+  logic [((NIN > 0) ? NIN : 1)-1:0] i_gpio;
   wire  [NOUT-1:0] o_gpio;
   wire             o_int;
 
@@ -32,8 +34,8 @@ module tb_top;
 
   axilgpio #(
     .C_AXI_ADDR_WIDTH(ADDR_WIDTH),
-    .OPT_SKIDBUFFER  (1'b1),
-    .OPT_LOWPOWER    (1'b0),
+    .OPT_SKIDBUFFER  (GPIO_OPT_SKIDBUFFER),
+    .OPT_LOWPOWER    (GPIO_OPT_LOWPOWER),
     .NOUT            (NOUT),
     .NIN             (NIN),
     .DEFAULT_OUTPUT  (GPIO_DEFAULT_OUTPUT)
@@ -93,6 +95,9 @@ module tb_top;
   );
 
   initial begin
+    $display("[C3_3_PARAM_CFG] NIN=%0d NOUT=%0d OPT_SKIDBUFFER=%0d OPT_LOWPOWER=%0d DEFAULT_OUTPUT=0x%0h",
+             NIN, NOUT, GPIO_OPT_SKIDBUFFER, GPIO_OPT_LOWPOWER,
+             GPIO_DEFAULT_OUTPUT);
     clk = 1'b0;
     forever #5ns clk = ~clk;
   end

@@ -22,7 +22,10 @@ class axi4l_gpio_coverage extends uvm_component;
   bit [GPIO_NIN-1:0]    coverage_mask;
   bit [GPIO_NIN-1:0]    hw_change_by_cycle[longint unsigned];
   bit [GPIO_NIN-1:0]    w1c_by_cycle[longint unsigned];
+  bit                   w1c_data_by_cycle[longint unsigned];
+  bit                   w1c_strobe_by_cycle[longint unsigned];
   bit                   gpio_cycle_known[longint unsigned];
+  bit [31:0]            output_model;
   int unsigned          axi_request_samples;
   int unsigned          axi_response_samples;
   int unsigned          bus_samples;
@@ -106,7 +109,9 @@ class axi4l_gpio_coverage extends uvm_component;
     cp_changed_bits: coverpoint changed_bits iff (reset_n) {
       bins none   = {0};
       bins single = {1};
-      bins multi  = {[2:GPIO_NIN]};
+      // A fixed upper bound keeps the covergroup legal for the NIN=0 build;
+      // sampled values can never exceed the elaborated input width.
+      bins multi  = {[2:32]};
     }
     cp_output_changed: coverpoint output_changed iff (reset_n);
     cp_int: coverpoint interrupt_value iff (reset_n);
@@ -186,6 +191,19 @@ class axi4l_gpio_coverage extends uvm_component;
     cp_collision: coverpoint collision { bins hw_change_wins = {1}; }
   endgroup
 
+  covergroup w1c_matrix_cg with function sample(
+    bit data_one, bit strobe_on, bit hardware_change, bit change_won
+  );
+    option.per_instance = 1;
+    cp_data: coverpoint data_one { bins zero = {0}; bins one = {1}; }
+    cp_strobe: coverpoint strobe_on { bins off = {0}; bins on = {1}; }
+    cp_hardware: coverpoint hardware_change {
+      bins stable = {0}; bins changing = {1};
+    }
+    cp_change_won: coverpoint change_won { bins observed = {1}; }
+    data_x_strobe_x_hardware: cross cp_data, cp_strobe, cp_hardware;
+  endgroup
+
   covergroup mask_irq_cg with function sample(
     bit any_mask_enabled, bit interrupt_value, int interrupt_event
   );
@@ -203,6 +221,23 @@ class axi4l_gpio_coverage extends uvm_component;
     mask_x_int: cross cp_mask, cp_int;
   endgroup
 
+  covergroup output_operation_cg with function sample(
+    int operation, bit changed, bit zero_strobe
+  );
+    option.per_instance = 1;
+    cp_operation: coverpoint operation {
+      bins load = {0}; bins set = {1}; bins clear = {2}; bins toggle = {3};
+    }
+    cp_changed: coverpoint changed {
+      bins no_change = {0}; bins change = {1};
+    }
+    cp_zero_strobe: coverpoint zero_strobe {
+      bins active = {0}; bins preserve = {1};
+    }
+    operation_x_changed: cross cp_operation, cp_changed;
+    operation_x_zero_strobe: cross cp_operation, cp_zero_strobe;
+  endgroup
+
   function new(string name = "axi4l_gpio_coverage",
                uvm_component parent = null);
     super.new(name, parent);
@@ -218,8 +253,12 @@ class axi4l_gpio_coverage extends uvm_component;
     bus_behavior_cg = new;
     reset_context_cg = new;
     w1c_collision_cg = new;
+    w1c_matrix_cg = new;
     mask_irq_cg = new;
+    output_operation_cg = new;
     gpio_observation_cg = new;
+    output_model = '0;
+    output_model[GPIO_NOUT-1:0] = GPIO_DEFAULT_OUTPUT;
   endfunction
 
   function automatic int aw_w_order(axi4l_seq_item tr);
@@ -278,23 +317,65 @@ class axi4l_gpio_coverage extends uvm_component;
                              observation.b_stall, observation.r_stall,
                              observation.write_outstanding,
                              observation.read_outstanding);
-    if (observation.reset_enter)
+    if (observation.reset_enter) begin
       reset_context_cg.sample(observation.reset_context);
+      output_model = '0;
+      output_model[GPIO_NOUT-1:0] = GPIO_DEFAULT_OUTPUT;
+    end
+  endfunction
+
+  function automatic bit [2:0] coverage_word_addr(axi4l_seq_item request);
+    if (GPIO_NIN == 0)
+      return {1'b0, request.addr[3:2]};
+    return request.addr[AXI4L_ADDR_WIDTH-1:2];
+  endfunction
+
+  function automatic bit [31:0] coverage_output_after_write(
+    bit [31:0] prior, axi4l_seq_item request
+  );
+    bit [31:0] result;
+    bit [2:0] operation;
+    result = prior;
+    operation = coverage_word_addr(request);
+    for (int lane = 0; lane < 4; lane++)
+      if (request.strb[lane]) begin
+        case (operation)
+          3'd0: result[lane*8 +: 8] = request.data[lane*8 +: 8];
+          3'd1: result[lane*8 +: 8] |= request.data[lane*8 +: 8];
+          3'd2: result[lane*8 +: 8] &= ~request.data[lane*8 +: 8];
+          3'd3: result[lane*8 +: 8] ^= request.data[lane*8 +: 8];
+          default: begin end
+        endcase
+      end
+    for (int bit_index = GPIO_NOUT; bit_index < 32; bit_index++)
+      result[bit_index] = 1'b0;
+    return result;
   endfunction
 
   function void try_sample_w1c_collision(longint unsigned cycle);
     if (gpio_cycle_known.exists(cycle) && w1c_by_cycle.exists(cycle)) begin
       w1c_collision_cg.sample(|(hw_change_by_cycle[cycle] &
                                 w1c_by_cycle[cycle]));
+      w1c_matrix_cg.sample(w1c_data_by_cycle[cycle],
+                           w1c_strobe_by_cycle[cycle],
+                           |hw_change_by_cycle[cycle],
+                           |(hw_change_by_cycle[cycle] &
+                             w1c_by_cycle[cycle]));
       gpio_cycle_known.delete(cycle);
       hw_change_by_cycle.delete(cycle);
       w1c_by_cycle.delete(cycle);
+      w1c_data_by_cycle.delete(cycle);
+      w1c_strobe_by_cycle.delete(cycle);
     end
   endfunction
 
   function void write_cov_timing(axi4l_timing_observation observation);
     int latency;
     bit [GPIO_NIN-1:0] clear_mask;
+    bit any_data;
+    bit any_strobe;
+    bit [31:0] next_output;
+    bit [2:0] word_addr;
     timing_samples++;
     latency = (observation.event_cycle >= observation.request.accept_cycle)
             ? observation.event_cycle - observation.request.accept_cycle : 0;
@@ -303,6 +384,15 @@ class axi4l_gpio_coverage extends uvm_component;
         observation.request.addr[AXI4L_ADDR_WIDTH-1:2], latency);
 
     if (observation.is_write_commit) begin
+      word_addr = coverage_word_addr(observation.request);
+      if (word_addr <= 3) begin
+        next_output = coverage_output_after_write(output_model,
+                                                  observation.request);
+        output_operation_cg.sample(word_addr,
+                                   next_output != output_model,
+                                   observation.request.strb == '0);
+        output_model = next_output;
+      end
       last_write_commit_cycle = observation.event_cycle;
       have_write_commit_cycle = 1'b1;
       if (have_read_snapshot_cycle &&
@@ -310,11 +400,21 @@ class axi4l_gpio_coverage extends uvm_component;
         same_edge_rw_cg.sample(1'b1);
       if (observation.request.addr[AXI4L_ADDR_WIDTH-1:2] == 3'd5) begin
         clear_mask = '0;
+        any_data = 1'b0;
+        any_strobe = 1'b0;
         for (int bit_index = 0; bit_index < GPIO_NIN; bit_index++)
-          if (observation.request.strb[bit_index/8] &&
-              observation.request.data[bit_index])
-            clear_mask[bit_index] = 1'b1;
+          begin
+            if (observation.request.data[bit_index])
+              any_data = 1'b1;
+            if (observation.request.strb[bit_index/8])
+              any_strobe = 1'b1;
+            if (observation.request.strb[bit_index/8] &&
+                observation.request.data[bit_index])
+              clear_mask[bit_index] = 1'b1;
+          end
         w1c_by_cycle[observation.event_cycle] = clear_mask;
+        w1c_data_by_cycle[observation.event_cycle] = any_data;
+        w1c_strobe_by_cycle[observation.event_cycle] = any_strobe;
         try_sample_w1c_collision(observation.event_cycle);
       end
       if (observation.request.addr[AXI4L_ADDR_WIDTH-1:2] == 3'd6)
@@ -383,6 +483,8 @@ class axi4l_gpio_coverage extends uvm_component;
       gpio_cycle_known.delete();
       hw_change_by_cycle.delete();
       w1c_by_cycle.delete();
+      w1c_data_by_cycle.delete();
+      w1c_strobe_by_cycle.delete();
     end
   endfunction
 

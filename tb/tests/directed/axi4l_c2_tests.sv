@@ -237,29 +237,56 @@ class axi4l_c2_checker_selftest extends axi4l_gpio_v2_base_test;
     env.timing_monitor.inject_missing_commit_once = 1'b1;
     axi_write(5'h10, 32'h0303_0303, 4'b1111);
     env.axi_agent.driver.wait_for_limited_idle();
+
+    env.timing_monitor.inject_orphan_snapshot_once = 1'b1;
+    env.timing_monitor.inject_stale_snapshot_once  = 1'b1;
+    axi_read(5'h00);
+    env.axi_agent.driver.wait_for_limited_idle();
+
+    env.timing_monitor.inject_duplicate_snapshot_once = 1'b1;
+    axi_read(5'h00);
+    env.axi_agent.driver.wait_for_limited_idle();
+
+    // Keep missing snapshot last for the same FIFO-association reason as the
+    // missing commit above.
+    env.timing_monitor.inject_missing_snapshot_once = 1'b1;
+    axi_read(5'h00);
+    env.axi_agent.driver.wait_for_limited_idle();
     repeat (3) @(env.axi_agent.driver.vif.mon_cb);
     env.timing_monitor.audit_pending("controlled checker self-test drain");
 
     if ((env.timing_monitor.orphan_commit_count == 0) ||
         (env.timing_monitor.duplicate_commit_count == 0) ||
         (env.timing_monitor.missing_commit_count == 0) ||
+        (env.timing_monitor.orphan_snapshot_count == 0) ||
+        (env.timing_monitor.duplicate_snapshot_count == 0) ||
+        (env.timing_monitor.missing_snapshot_count == 0) ||
         (env.timing_monitor.stale_epoch_count == 0) ||
-        (env.timing_monitor.unqualified_b_count == 0))
+        (env.timing_monitor.unqualified_b_count == 0) ||
+        (env.timing_monitor.unqualified_r_count == 0))
       `uvm_error("C2_SELFTEST_MISSED",
-        $sformatf("orphan=%0d duplicate=%0d missing=%0d stale=%0d unqualified_B=%0d",
+        $sformatf("commit o/d/m=%0d/%0d/%0d snapshot o/d/m=%0d/%0d/%0d stale=%0d unqualified B/R=%0d/%0d",
                   env.timing_monitor.orphan_commit_count,
                   env.timing_monitor.duplicate_commit_count,
                   env.timing_monitor.missing_commit_count,
+                  env.timing_monitor.orphan_snapshot_count,
+                  env.timing_monitor.duplicate_snapshot_count,
+                  env.timing_monitor.missing_snapshot_count,
                   env.timing_monitor.stale_epoch_count,
-                  env.timing_monitor.unqualified_b_count))
+                  env.timing_monitor.unqualified_b_count,
+                  env.timing_monitor.unqualified_r_count))
     else
       `uvm_info("C2_SELFTEST_PASS",
-        $sformatf("expected faults detected without polluting normal regression: orphan=%0d duplicate=%0d missing=%0d stale=%0d unqualified_B=%0d",
+        $sformatf("expected faults detected without polluting normal regression: commit o/d/m=%0d/%0d/%0d snapshot o/d/m=%0d/%0d/%0d stale=%0d unqualified B/R=%0d/%0d",
                   env.timing_monitor.orphan_commit_count,
                   env.timing_monitor.duplicate_commit_count,
                   env.timing_monitor.missing_commit_count,
+                  env.timing_monitor.orphan_snapshot_count,
+                  env.timing_monitor.duplicate_snapshot_count,
+                  env.timing_monitor.missing_snapshot_count,
                   env.timing_monitor.stale_epoch_count,
-                  env.timing_monitor.unqualified_b_count), UVM_NONE)
+                  env.timing_monitor.unqualified_b_count,
+                  env.timing_monitor.unqualified_r_count), UVM_NONE)
     phase.drop_objection(this);
   endtask
 endclass

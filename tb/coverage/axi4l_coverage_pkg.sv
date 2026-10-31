@@ -5,6 +5,7 @@ package axi4l_coverage_pkg;
   import axi4l_gpio_tb_cfg_pkg::AXI4L_DATA_WIDTH;
   import axi4l_gpio_tb_cfg_pkg::GPIO_NOUT;
   import axi4l_gpio_tb_cfg_pkg::GPIO_NIN;
+  import axi4l_gpio_tb_cfg_pkg::GPIO_DEFAULT_OUTPUT;
   import axi4l_agent_pkg::axi4l_seq_item;
   import axi4l_agent_pkg::AXI4L_WRITE;
   import axi4l_agent_pkg::axi4l_bus_observation;

@@ -131,6 +131,17 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
     return ~model_mask & model_changed;
   endfunction
 
+  function automatic bit [2:0] decoded_word_addr(
+    bit [AXI4L_ADDR_WIDTH-1:0] addr
+  );
+    // The RTL aliases words 4..7 back to LOAD/SET/CLEAR/TOGGLE when NIN=0.
+    // Keep this in the independent model so the zero-input matrix run checks
+    // the real decode rather than assuming the default NIN>0 register map.
+    if (GPIO_NIN == 0)
+      return {1'b0, addr[3:2]};
+    return addr[AXI4L_ADDR_WIDTH-1:2];
+  endfunction
+
   function automatic bit [AXI4L_DATA_WIDTH-1:0] register_read_value(
     bit [AXI4L_ADDR_WIDTH-1:0] addr
   );
@@ -138,13 +149,21 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
     // addresses all read back the output register; unused upper bits stay zero.
     bit [AXI4L_DATA_WIDTH-1:0] value;
     value = '0;
-    case (addr[AXI4L_ADDR_WIDTH-1:2])
+    case (decoded_word_addr(addr))
       3'd0, 3'd1, 3'd2, 3'd3:
         value[GPIO_NOUT-1:0] = model_gpio[GPIO_NOUT-1:0];
-      3'd4: value[GPIO_NIN-1:0] = model_qq;
-      3'd5: value[GPIO_NIN-1:0] = model_changed;
-      3'd6: value[GPIO_NIN-1:0] = model_mask;
-      3'd7: value[GPIO_NIN-1:0] = active_interrupt_bits();
+      3'd4: for (int bit_index = 0; bit_index < GPIO_NIN; bit_index++)
+               value[bit_index] = model_qq[bit_index];
+      3'd5: for (int bit_index = 0; bit_index < GPIO_NIN; bit_index++)
+               value[bit_index] = model_changed[bit_index];
+      3'd6: for (int bit_index = 0; bit_index < GPIO_NIN; bit_index++)
+               value[bit_index] = model_mask[bit_index];
+      3'd7: begin
+        bit [GPIO_NIN-1:0] active_bits;
+        active_bits = active_interrupt_bits();
+        for (int bit_index = 0; bit_index < GPIO_NIN; bit_index++)
+          value[bit_index] = active_bits[bit_index];
+      end
       default: begin end
     endcase
     return value;
@@ -160,7 +179,7 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
     result = prior;
     for (int lane = 0; lane < AXI4L_DATA_WIDTH/8; lane++) begin
       if (tr.strb[lane]) begin
-        case (tr.addr[AXI4L_ADDR_WIDTH-1:2])
+        case (decoded_word_addr(tr.addr))
           3'd0: result[lane*8 +: 8] = tr.data[lane*8 +: 8];
           3'd1: result[lane*8 +: 8] = prior[lane*8 +: 8]
                                             | tr.data[lane*8 +: 8];
@@ -172,8 +191,9 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
         endcase
       end
     end
-    if (GPIO_NOUT < AXI4L_DATA_WIDTH)
-      result[AXI4L_DATA_WIDTH-1:GPIO_NOUT] = '0;
+    for (int bit_index = GPIO_NOUT;
+             bit_index < AXI4L_DATA_WIDTH; bit_index++)
+      result[bit_index] = 1'b0;
     return result;
   endfunction
 
@@ -185,11 +205,14 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
     // Padding permits the generic AXI byte-lane loop when GPIO_NIN is narrower.
     bit [AXI4L_DATA_WIDTH-1:0] padded;
     padded = '0;
-    padded[GPIO_NIN-1:0] = prior;
+    for (int bit_index = 0; bit_index < GPIO_NIN; bit_index++)
+      padded[bit_index] = prior[bit_index];
     for (int lane = 0; lane < AXI4L_DATA_WIDTH/8; lane++)
       if (tr.strb[lane])
         padded[lane*8 +: 8] = tr.data[lane*8 +: 8];
-    return padded[GPIO_NIN-1:0];
+    for (int bit_index = 0; bit_index < GPIO_NIN; bit_index++)
+      prior[bit_index] = padded[bit_index];
+    return prior;
   endfunction
 
   function void report_error(string id, string message);
@@ -402,7 +425,7 @@ class axi4l_gpio_scoreboard extends uvm_scoreboard;
       expected_response.resp = AXI_OKAY;
       expected_write_responses.push_back(expected_response);
 
-      case (request.addr[AXI4L_ADDR_WIDTH-1:2])
+      case (decoded_word_addr(request.addr))
         3'd0, 3'd1, 3'd2, 3'd3: begin
           next_gpio = apply_output_operation(next_gpio, request);
           write_checks++;

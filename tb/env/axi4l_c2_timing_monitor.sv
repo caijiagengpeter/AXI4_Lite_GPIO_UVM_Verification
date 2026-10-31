@@ -76,6 +76,10 @@ class axi4l_c2_timing_monitor extends uvm_monitor;
   bit inject_duplicate_commit_once;
   bit inject_missing_commit_once;
   bit inject_stale_commit_once;
+  bit inject_orphan_snapshot_once;
+  bit inject_duplicate_snapshot_once;
+  bit inject_missing_snapshot_once;
+  bit inject_stale_snapshot_once;
 
   bit commit_seen[string];
   bit snapshot_seen[string];
@@ -251,6 +255,13 @@ class axi4l_c2_timing_monitor extends uvm_monitor;
     axi4l_seq_item request;
     longint unsigned request_epoch;
     string key;
+    if (inject_orphan_snapshot_once) begin
+      inject_orphan_snapshot_once = 1'b0;
+      orphan_snapshot_count++;
+      violation("C2_ORPHAN_SNAPSHOT",
+        $sformatf("injected snapshot at cycle %0d has no accepted AR request",
+                  event_cycle));
+    end
     if (accepted_read_q.size() == 0) begin
       orphan_snapshot_count++;
       violation("C2_ORPHAN_SNAPSHOT",
@@ -258,8 +269,22 @@ class axi4l_c2_timing_monitor extends uvm_monitor;
                   event_cycle));
       return;
     end
+    if (inject_missing_snapshot_once) begin
+      inject_missing_snapshot_once = 1'b0;
+      `uvm_info("C2_FAULT_INJECT",
+        $sformatf("suppressed READ_SNAPSHOT at cycle %0d for missing-event self-test",
+                  event_cycle), UVM_NONE)
+      return;
+    end
     request       = accepted_read_q.pop_front();
     request_epoch = accepted_read_epoch_q.pop_front();
+    if (inject_stale_snapshot_once) begin
+      inject_stale_snapshot_once = 1'b0;
+      stale_epoch_count++;
+      violation("C2_STALE_EPOCH",
+        $sformatf("injected stale snapshot request epoch=%0d current=%0d cycle=%0d",
+                  request_epoch, current_epoch + 1, event_cycle));
+    end
     if (request_epoch != current_epoch) begin
       stale_epoch_count++;
       violation("C2_STALE_EPOCH",
@@ -293,6 +318,13 @@ class axi4l_c2_timing_monitor extends uvm_monitor;
                 request_epoch, request.transaction_id, request.accept_cycle,
                 event_cycle, request.addr, request.prot,
                 whitebox_enable ? "white-box" : "black-box"), UVM_MEDIUM)
+    if (inject_duplicate_snapshot_once) begin
+      inject_duplicate_snapshot_once = 1'b0;
+      duplicate_snapshot_count++;
+      violation("C2_DUPLICATE_SNAPSHOT",
+        $sformatf("injected duplicate snapshot epoch=%0d request=%0d cycle=%0d",
+                  request_epoch, request.transaction_id, event_cycle));
+    end
   endfunction
 
   function void audit_pending(string reason = "end-of-test");

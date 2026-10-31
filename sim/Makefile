@@ -15,6 +15,8 @@ C3_PLAN  ?= ../manifests/c3_1_coverage_plan.json
 C3_OUT   ?= c3_1_coverage
 C3_2_PLAN ?= ../manifests/c3_2_coverage_plan.json
 C3_2_OUT  ?= c3_2_coverage
+C3_3_PLAN ?= ../manifests/c3_3_parameter_negative_plan.json
+C3_3_OUT  ?= c3_3_parameter_negative
 PYTHON   ?= python3.11
 
 .PHONY: all smoke gpio_smoke v2_directed v2_random v3_pipelined v3_mid_reset v3_stress \
@@ -23,6 +25,7 @@ PYTHON   ?= python3.11
 	regression coverage coverage_manifest coverage_manifest_selftest \
 	coverage_v4 coverage_v4_gpio coverage_v4_bfm coverage_v4_checker \
 	c3_2_closure coverage_c3_2 coverage_c3_2_gpio \
+	c3_3_parameter coverage_c3_3 coverage_c3_3_delta \
 	coverage_clean compile run clean
 
 all: smoke
@@ -101,10 +104,6 @@ v4_reset: compile
 
 regression: compile
 	./$(SIMV) +UVM_TESTNAME=axi4l_smoke_test +UVM_VERBOSITY=UVM_LOW \
-c3_2_closure: compile
-	./$(SIMV) +UVM_TESTNAME=axi4l_c3_2_coverage_test \
-		+ntb_random_seed=21 +UVM_VERBOSITY=UVM_LOW -l c3_2_closure.log
-
 		-l smoke.log
 	./$(SIMV) +UVM_TESTNAME=gpio_agent_smoke_test +UVM_VERBOSITY=UVM_LOW \
 		-l gpio_smoke.log
@@ -134,6 +133,14 @@ c3_2_closure: compile
 		-l c2_w1c_hw_collision.log
 	./$(SIMV) +UVM_TESTNAME=axi4l_c2_checker_selftest +UVM_VERBOSITY=UVM_LOW \
 		-l c2_checker_selftest.log
+
+c3_2_closure: compile
+	./$(SIMV) +UVM_TESTNAME=axi4l_c3_2_coverage_test \
+		+ntb_random_seed=21 +UVM_VERBOSITY=UVM_LOW -l c3_2_closure.log
+
+c3_3_parameter: compile
+	./$(SIMV) +UVM_TESTNAME=axi4l_c3_3_parameter_test \
+		+ntb_random_seed=31 +UVM_VERBOSITY=UVM_LOW -l c3_3_parameter.log
 
 coverage: coverage_clean
 	$(VCS) $(VCS_COMMON_OPTS) -cm $(COV_TYPES) -cm_dir coverage.vdb \
@@ -205,6 +212,11 @@ clean:
 		c2_timing.log c2_w1c_hw_collision.log c2_checker_selftest.log \
 		v3_stress_cov.log v3_stress_depth3_cov.log \
 		compile_cov.log v2_directed_cov.log v2_random_cov.log \
+		bit34_coverage.log bit34_coverage_cov.log \
+		w1c_hw_collision.log w1c_hw_collision_cov.log \
+		request_stall.log request_stall_cov.log \
+		tr_db.log AN.DB DVEfiles
+
 # C3.2 extends (but does not mutate) the frozen C3.1 plan.  Use a new output
 # directory so the preserved C3.1 reports and logs remain untouched.
 coverage_c3_2:
@@ -215,8 +227,14 @@ coverage_c3_2_gpio:
 	$(PYTHON) ../scripts/coverage_manifest.py run --plan $(C3_2_PLAN) \
 		--output-root $(C3_2_OUT) --sets gpio_dut
 
-		bit34_coverage.log bit34_coverage_cov.log \
-		w1c_hw_collision.log w1c_hw_collision_cov.log \
-		request_stall.log request_stall_cov.log \
-		tr_db.log AN.DB DVEfiles
+# C3.3 uses isolated build signatures and merge groups for every parameter
+# elaboration and for the bad-slave detector.  Existing C3.1/C3.2 trees remain
+# untouched.
+coverage_c3_3:
+	$(PYTHON) ../scripts/coverage_manifest.py run --plan $(C3_3_PLAN) \
+		--output-root $(C3_3_OUT) --sets all
+
+coverage_c3_3_delta:
+	$(PYTHON) ../scripts/coverage_manifest.py run --plan $(C3_3_PLAN) \
+		--output-root $(C3_3_OUT) --sets c3_3
 

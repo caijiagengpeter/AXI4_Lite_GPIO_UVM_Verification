@@ -133,6 +133,7 @@ class axi4l_v4_agent_test_base extends uvm_test;
       bins aw_only = {0}; bins w_only = {1}; bins pending_b = {2};
       bins pending_r = {3}; bins credit_wait = {4};
       bins normal_before_publication = {5}; bins recovery = {6};
+      bins depth2_both = {7};
     }
   endgroup
 

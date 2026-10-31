@@ -12,7 +12,8 @@ class axi4l_gpio_w1c_hw_collision_test extends axi4l_gpio_v2_base_test;
   task automatic clear_changed(bit [GPIO_NIN-1:0] clear_mask);
     bit [AXI4L_DATA_WIDTH-1:0] clear_data;
     clear_data = '0;
-    clear_data[GPIO_NIN-1:0] = clear_mask;
+    for (int bit_index = 0; bit_index < GPIO_NIN; bit_index++)
+      clear_data[bit_index] = clear_mask[bit_index];
     axi_write(ADDR_CHANGED, clear_data, 4'b0001);
   endtask
 
@@ -57,6 +58,30 @@ class axi4l_gpio_w1c_hw_collision_test extends axi4l_gpio_v2_base_test;
                         bit_index),
               UVM_NONE)
 
+    // Data=1 with WSTRB=0 must preserve the sticky bit.  This is checked by
+    // the independent model and samples the software-data/strobe matrix.
+    axi_write(ADDR_CHANGED, onehot_data, 4'b0000);
+    axi_read(ADDR_CHANGED);
+
+    // Clear to a stable baseline, then align data=0/WSTRB=1 with a real input
+    // change.  Hardware must set the bit even though software writes no clear.
+    clear_changed(onehot_gpio);
+    gpio_level('0, 6);
+    clear_changed(onehot_gpio);
+    fork
+      begin
+        gpio_level(onehot_gpio, 6);
+      end
+      begin
+        axi_write(ADDR_CHANGED, '0, 4'b0001,
+                  COLLISION_WRITE_DELAY, COLLISION_WRITE_DELAY, 1);
+      end
+    join
+    axi_read(ADDR_CHANGED);
+    `uvm_info("W1C_MATRIX",
+      $sformatf("bit%0d covered data1/strobe0 preservation and data0/strobe1/input-change",
+                bit_index), UVM_NONE)
+
     // Return to a clean, fully synchronized baseline.  The falling edge sets
     // CHANGED once more, so wait for it to traverse the pipeline before W1C.
     gpio_level('0, 6);
@@ -71,7 +96,7 @@ class axi4l_gpio_w1c_hw_collision_test extends axi4l_gpio_v2_base_test;
 
     // Six stable cycles flush q/qq/last and establish a known clean baseline.
     gpio_level('0, 6);
-    clear_changed({GPIO_NIN{1'b1}});
+    clear_changed('1);
     axi_read(ADDR_CHANGED);
 
     // The plusarg is a diagnostic mode used to validate bit0 alignment before

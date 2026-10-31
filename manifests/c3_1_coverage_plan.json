@@ -152,8 +152,8 @@
       "coverage_object": "c2_checker_fault_injection", "driver_mode": "limited_overlap", "runtime_parameters": {},
       "expected_outcome": {
         "kind": "controlled_checker_faults",
-        "fault_injection": ["orphan_commit", "duplicate_commit", "missing_commit", "stale_epoch", "unqualified_B"],
-        "required_markers": ["[C2_SELFTEST_PASS]", "orphan=1", "duplicate=1", "missing=1", "stale=1", "unqualified_B=1"]
+        "fault_injection": ["orphan_commit", "duplicate_commit", "missing_commit", "orphan_snapshot", "duplicate_snapshot", "missing_snapshot", "stale_epoch", "unqualified_B", "unqualified_R"],
+        "required_markers": ["[C2_SELFTEST_PASS]", "commit o/d/m=1/1/1", "snapshot o/d/m=1/1/1", "stale=2", "unqualified B/R=1/1"]
       },
       "plusargs": []
     }

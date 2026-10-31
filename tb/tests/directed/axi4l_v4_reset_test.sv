@@ -5,7 +5,8 @@ typedef enum int unsigned {
   V4_RESET_PENDING_R,
   V4_RESET_CREDIT_WAIT,
   V4_RESET_NORMAL_UNPUBLISHED,
-  V4_RESET_RECOVERY
+  V4_RESET_RECOVERY,
+  V4_RESET_DEPTH2_BOTH
 } axi4l_v4_reset_scenario_e;
 
 class axi4l_v4_reset_seq extends uvm_sequence #(axi4l_seq_item);
@@ -59,6 +60,12 @@ class axi4l_v4_reset_seq extends uvm_sequence #(axi4l_seq_item);
       end
       V4_RESET_NORMAL_UNPUBLISHED:
         issue(AXI4L_WRITE, 0, 0, 0, 0, 1'b0);
+      V4_RESET_DEPTH2_BOTH: begin
+        issue(AXI4L_WRITE, 0, 0, 0, 80, 1'b1);
+        issue(AXI4L_WRITE, 0, 0, 0, 80, 1'b1);
+        issue(AXI4L_READ,  0, 0, 0, 80, 1'b1);
+        issue(AXI4L_READ,  0, 0, 0, 80, 1'b1);
+      end
       V4_RESET_RECOVERY: begin
         issue(AXI4L_WRITE, 0, 0, 0, 0, 1'b0);
         issue(AXI4L_READ,  0, 0, 0, 0, 1'b0);
@@ -161,6 +168,18 @@ class axi4l_v4_reset_test extends axi4l_v4_agent_test_base;
         pulse_reset("normal_unpublished", scenario);
         agent.driver.v4_publisher_hold = 1'b0;
       end
+      V4_RESET_DEPTH2_BOTH: begin
+        forever begin
+          @(vif.mon_cb);
+          if ((vif.test_max_write_outstanding >= 2) &&
+              (vif.test_max_read_outstanding >= 2) &&
+              vif.mon_cb.BVALID && !vif.mon_cb.BREADY &&
+              vif.mon_cb.RVALID && !vif.mon_cb.RREADY) begin
+            pulse_reset("depth2_both", scenario);
+            return;
+          end
+        end
+      end
       default: ;
     endcase
   endtask
@@ -212,17 +231,23 @@ class axi4l_v4_reset_test extends axi4l_v4_agent_test_base;
     run_one(V4_RESET_PENDING_R,           4); run_recovery(4);
     run_one(V4_RESET_CREDIT_WAIT,         5); run_recovery(5);
     run_one(V4_RESET_NORMAL_UNPUBLISHED,  6); run_recovery(6);
+    run_one(V4_RESET_DEPTH2_BOTH,         7); run_recovery(7);
     if (vif.test_max_write_outstanding > observed_max_write_outstanding)
       observed_max_write_outstanding = vif.test_max_write_outstanding;
     if (vif.test_max_read_outstanding > observed_max_read_outstanding)
       observed_max_read_outstanding = vif.test_max_read_outstanding;
     v4_depth_order_cg.sample(observed_max_write_outstanding,
                              observed_max_read_outstanding, 1'b1, 1'b1);
+    if ((observed_max_write_outstanding < 2) ||
+        (observed_max_read_outstanding < 2))
+      `uvm_error("V4_RESET_DEPTH2_MISSED",
+        $sformatf("reset matrix reached only write=%0d read=%0d",
+          observed_max_write_outstanding, observed_max_read_outstanding))
     `uvm_info("V4_RESET_DEPTH_PROOF",
       $sformatf("controlled slave reset scenarios observed max outstanding write=%0d read=%0d",
         observed_max_write_outstanding, observed_max_read_outstanding), UVM_NONE)
     `uvm_info("V4_RESET_PASS",
-      "AW-only/W-only/pending B/pending R/credit wait/normal-unpublished and recovery completed",
+      "AW-only/W-only/pending B/pending R/credit wait/normal-unpublished/real depth2-both and recovery completed",
       UVM_NONE)
     phase.drop_objection(this);
   endtask

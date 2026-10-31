@@ -1,0 +1,120 @@
+{
+  "extends": "c3_2_coverage_plan.json",
+  "phase": "AXI4-Lite v4.0-C3.3",
+  "description": "Isolated parameter elaborations, default-DUT gap traffic, and controlled negative protocol detection.",
+  "source_inventory": {
+    "c3_3_parameter_matrix": "Independent VCS builds for NOUT=32, NIN/NOUT=1, OPT_SKIDBUFFER=0, OPT_LOWPOWER=1 with non-zero reset value, and the investigated NIN=0 alias configuration.",
+    "c3_3_negative": "Dedicated bad-slave selftest detects early, unstable, stale, duplicate, and missing response/request faults without treating SLVERR itself as a protocol violation."
+  },
+  "builds": {
+    "tb_top_nout32": {
+      "top": "tb_top",
+      "filelist": "filelist.f",
+      "compile_config": "NIN=5 NOUT=32 skid=1 lowpower=0",
+      "compile_options": ["+define+C3_GPIO_NOUT=32"],
+      "dut_parameters": {"C_AXI_ADDR_WIDTH": 5, "DATA_WIDTH": 32, "NOUT": 32, "NIN": 5, "DEFAULT_OUTPUT": "0x00000000", "OPT_SKIDBUFFER": 1, "OPT_LOWPOWER": 0, "v4_test_slave_MAX_DEPTH": 8}
+    },
+    "tb_top_nin1_nout1": {
+      "top": "tb_top",
+      "filelist": "filelist.f",
+      "compile_config": "NIN=1 NOUT=1 skid=1 lowpower=0",
+      "compile_options": ["+define+C3_GPIO_NIN=1", "+define+C3_GPIO_NOUT=1"],
+      "dut_parameters": {"C_AXI_ADDR_WIDTH": 5, "DATA_WIDTH": 32, "NOUT": 1, "NIN": 1, "DEFAULT_OUTPUT": "0x0", "OPT_SKIDBUFFER": 1, "OPT_LOWPOWER": 0, "v4_test_slave_MAX_DEPTH": 8}
+    },
+    "tb_top_skid0": {
+      "top": "tb_top",
+      "filelist": "filelist.f",
+      "compile_config": "NIN=5 NOUT=30 skid=0 lowpower=0",
+      "compile_options": ["+define+C3_GPIO_OPT_SKIDBUFFER=0"],
+      "dut_parameters": {"C_AXI_ADDR_WIDTH": 5, "DATA_WIDTH": 32, "NOUT": 30, "NIN": 5, "DEFAULT_OUTPUT": "0x00000000", "OPT_SKIDBUFFER": 0, "OPT_LOWPOWER": 0, "v4_test_slave_MAX_DEPTH": 8}
+    },
+    "tb_top_lowpower1": {
+      "top": "tb_top",
+      "filelist": "filelist.f",
+      "compile_config": "NIN=5 NOUT=30 skid=1 lowpower=1 nonzero default",
+      "compile_options": ["+define+C3_GPIO_OPT_LOWPOWER=1", "+define+C3_GPIO_DEFAULT_OUTPUT=30'h15555555"],
+      "dut_parameters": {"C_AXI_ADDR_WIDTH": 5, "DATA_WIDTH": 32, "NOUT": 30, "NIN": 5, "DEFAULT_OUTPUT": "0x15555555", "OPT_SKIDBUFFER": 1, "OPT_LOWPOWER": 1, "v4_test_slave_MAX_DEPTH": 8}
+    },
+    "tb_top_nin0_nout32": {
+      "top": "tb_top",
+      "filelist": "filelist.f",
+      "compile_config": "NIN=0 NOUT=32 skid=1 lowpower=0 protocol-only SVA",
+      "compile_options": ["+define+C3_GPIO_NIN=0", "+define+C3_GPIO_NIN_ZERO", "+define+C3_GPIO_NOUT=32"],
+      "dut_parameters": {"C_AXI_ADDR_WIDTH": 5, "DATA_WIDTH": 32, "NOUT": 32, "NIN": 0, "DEFAULT_OUTPUT": "0x00000000", "OPT_SKIDBUFFER": 1, "OPT_LOWPOWER": 0, "v4_test_slave_MAX_DEPTH": 8}
+    },
+    "tb_bad_slave": {
+      "top": "tb_bad_slave_top",
+      "filelist": "filelist_bad_slave.f",
+      "compile_config": "Dedicated controlled bad-slave detector selftest",
+      "compile_options": [],
+      "dut_parameters": {"scope": "protocol_detector", "ADDR_WIDTH": 5, "DATA_WIDTH": 32}
+    }
+  },
+  "merge_groups": {
+    "gpio_nout32": {"coverage_object": "gpio_dut_nin5_nout32_skid1_lowpower0", "coverage_claim": "NOUT=32 branch and full-width output behavior only."},
+    "gpio_nin1_nout1": {"coverage_object": "gpio_dut_nin1_nout1_skid1_lowpower0", "coverage_claim": "Minimum positive input/output widths only."},
+    "gpio_skid0": {"coverage_object": "gpio_dut_nin5_nout30_skid0_lowpower0", "coverage_claim": "No-skid generate path only."},
+    "gpio_lowpower1": {"coverage_object": "gpio_dut_nin5_nout30_skid1_lowpower1", "coverage_claim": "Low-power branches and non-zero reset output only."},
+    "gpio_nin0": {"coverage_object": "gpio_dut_nin0_nout32_skid1_lowpower0", "coverage_claim": "NIN=0 elaboration and upper-word output aliases; protocol-only SVA."},
+    "bad_slave_negative": {"coverage_object": "controlled_bad_slave_protocol_detector", "coverage_claim": "Detector sensitivity evidence; never merged into GPIO DUT RTL coverage."}
+  },
+  "report_notes": [
+    "Every parameter configuration has a distinct build_variant, compile signature, coverage object, and merge group.",
+    "NIN=0 uses the RTL's guarded one-bit physical input port and protocol-only SVA because INPUT_HANDLING does not elaborate; the run result determines support status.",
+    "BRESP/RRESP SLVERR values are legal responses and are not counted as protocol faults unless they change while VALID is stalled.",
+    "C3.3 is verification expansion, not C3.4 waiver or sign-off closure."
+  ],
+  "runs": [
+    {
+      "id": "gpio_c3_3_default_seed31", "set": "c3_3", "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_c3_3_parameter_test", "target": "c3_3_default_gap", "seed": 31,
+      "execution_target": "Default GPIO DUT RTL", "build_variant": "tb_top_default", "config": "default_nin5_nout30_skid1_lowpower0",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "legacy_serial_checked",
+      "runtime_parameters": {"unaligned_aliases": [1, 2, 3], "operation_change_classes": ["change", "no_change"]},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": ["[C3_3_PARAMETER_PASS]"]}, "plusargs": []
+    },
+    {
+      "id": "gpio_c3_3_nout32_seed32", "set": "c3_3", "merge_group": "gpio_nout32",
+      "test_name": "axi4l_c3_3_parameter_test", "target": "parameter_nout32", "seed": 32,
+      "execution_target": "GPIO DUT RTL", "build_variant": "tb_top_nout32", "config": "nin5_nout32_skid1_lowpower0",
+      "coverage_object": "gpio_dut_nin5_nout32_skid1_lowpower0", "driver_mode": "legacy_serial_checked", "runtime_parameters": {},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": ["[C3_3_PARAMETER_PASS]"]}, "plusargs": []
+    },
+    {
+      "id": "gpio_c3_3_nin1_nout1_seed33", "set": "c3_3", "merge_group": "gpio_nin1_nout1",
+      "test_name": "axi4l_c3_3_parameter_test", "target": "parameter_min_positive", "seed": 33,
+      "execution_target": "GPIO DUT RTL", "build_variant": "tb_top_nin1_nout1", "config": "nin1_nout1_skid1_lowpower0",
+      "coverage_object": "gpio_dut_nin1_nout1_skid1_lowpower0", "driver_mode": "legacy_serial_checked", "runtime_parameters": {},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": ["[C3_3_PARAMETER_PASS]"]}, "plusargs": []
+    },
+    {
+      "id": "gpio_c3_3_skid0_seed34", "set": "c3_3", "merge_group": "gpio_skid0",
+      "test_name": "axi4l_c3_3_parameter_test", "target": "parameter_skid0", "seed": 34,
+      "execution_target": "GPIO DUT RTL", "build_variant": "tb_top_skid0", "config": "nin5_nout30_skid0_lowpower0",
+      "coverage_object": "gpio_dut_nin5_nout30_skid0_lowpower0", "driver_mode": "legacy_serial_checked", "runtime_parameters": {},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": ["[C3_3_PARAMETER_PASS]"]}, "plusargs": []
+    },
+    {
+      "id": "gpio_c3_3_lowpower1_seed35", "set": "c3_3", "merge_group": "gpio_lowpower1",
+      "test_name": "axi4l_c3_3_parameter_test", "target": "parameter_lowpower1", "seed": 35,
+      "execution_target": "GPIO DUT RTL", "build_variant": "tb_top_lowpower1", "config": "nin5_nout30_skid1_lowpower1",
+      "coverage_object": "gpio_dut_nin5_nout30_skid1_lowpower1", "driver_mode": "legacy_serial_checked", "runtime_parameters": {},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": ["[C3_3_PARAMETER_PASS]"]}, "plusargs": []
+    },
+    {
+      "id": "gpio_c3_3_nin0_seed36", "set": "c3_3", "merge_group": "gpio_nin0",
+      "test_name": "axi4l_c3_3_parameter_test", "target": "parameter_nin0", "seed": 36,
+      "execution_target": "GPIO DUT RTL", "build_variant": "tb_top_nin0_nout32", "config": "nin0_nout32_skid1_lowpower0",
+      "coverage_object": "gpio_dut_nin0_nout32_skid1_lowpower0", "driver_mode": "legacy_serial_checked", "runtime_parameters": {"upper_words_alias_output_ops": true},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": ["[C3_3_PARAMETER_PASS]"]}, "plusargs": []
+    },
+    {
+      "id": "c3_3_bad_slave_seed37", "set": "c3_3", "merge_group": "bad_slave_negative",
+      "test_name": "axi4l_bad_slave_selftest", "target": "controlled_negative", "seed": 37,
+      "execution_target": "Dedicated protocol detector", "build_variant": "tb_bad_slave", "config": "bad_slave_detector",
+      "coverage_object": "controlled_bad_slave_protocol_detector", "driver_mode": "direct_fault_injection",
+      "runtime_parameters": {"faults": ["early_b", "early_r", "r_stability", "b_stability", "request_stability", "stale_reset", "duplicate", "missing"]},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": ["[C3_3_BAD_SLAVE_PASS]"]}, "plusargs": []
+    }
+  ]
+}

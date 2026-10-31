@@ -21,6 +21,7 @@
 ../dut/rtl/skidbuffer.v
 ../dut/rtl/axilgpio.v
 ../tb/axi_agent/axi4l_v4_test_slave.sv
+../tb/assertions/axi4l_protocol_sva.sv
 ../tb/assertions/axi4l_gpio_sva.sv
 ../tb/assertions/axi4l_gpio_sva_bind.sv
 ../tb/tb_top.sv

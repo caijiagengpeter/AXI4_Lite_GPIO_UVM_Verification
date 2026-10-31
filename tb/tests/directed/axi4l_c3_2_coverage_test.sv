@@ -47,7 +47,8 @@ class axi4l_c3_2_coverage_test extends axi4l_gpio_v2_base_test;
         strb = pattern[AXI4L_DATA_WIDTH/8-1:0];
         data = 32'h5aa5_00f0 ^ (32'h0101_0101 * pattern)
                              ^ (32'h1111_0000 * legal_regs[reg_index]);
-        data[GPIO_NIN-1:0] = (pattern + legal_regs[reg_index] + 1);
+        for (int bit_index = 0; bit_index < GPIO_NIN; bit_index++)
+          data[bit_index] = (pattern + legal_regs[reg_index] + 1) >> bit_index;
         relation = (pattern + reg_index) % 9;
         relation_delays(relation, aw_delay, w_delay);
         response_delay = ((pattern + reg_index) & 1) ? 0 : 6;

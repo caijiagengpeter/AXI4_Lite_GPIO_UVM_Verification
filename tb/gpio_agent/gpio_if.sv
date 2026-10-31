@@ -6,7 +6,7 @@ interface gpio_if #(
 ) (
   input  logic             ACLK,
   input  logic             ARESETN,
-  output logic [NIN-1:0]   i_gpio,
+  output logic [((NIN > 0) ? NIN : 1)-1:0] i_gpio,
   input  logic [NOUT-1:0]  o_gpio,
   input  logic             o_int
 );

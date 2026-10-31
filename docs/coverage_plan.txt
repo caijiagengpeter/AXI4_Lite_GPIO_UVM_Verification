@@ -2,10 +2,11 @@ AXI4-Lite GPIO Functional Coverage Plan
 =======================================
 
 Baseline: docs/verification_plan.txt v1.0, Section 14
-C3.2 state: observed-event covergroups, three closure tests, overlay manifest,
-and compatible URG grouping are implemented and recorded in
-docs/v4_c3_2_functional_coverage.md. Status below distinguishes closed default
-configuration intent from partial or specification-blocked items.
+C3.3 state: C3.2 observed-event coverage is extended with operation
+change/no-change, W1C data/strobe/hardware-change, address-alias, real depth-2
+reset, isolated parameter elaborations, and controlled bad-slave detection.
+Measured results are recorded in docs/v4_c3_3_parameter_negative.md; code gaps
+and denominator analysis are in docs/v4_c3_3_code_coverage_gap_analysis.md.
 
 Field definitions
 -----------------
@@ -68,8 +69,9 @@ Coverpoint/Cross: register address; access type x register
 Bins/Intent: all eight word addresses plus defined unaligned aliases; read/write
              accesses where meaningful
 Goal: 100% of reachable register bins
-Status: IMPLEMENTED_PARTIAL
-Notes: Do not mark intentional alias behavior illegal.
+Status: IMPLEMENTED_CLOSED_MATRIX
+Notes: Default unaligned aliases and NIN=0 upper-word output aliases are checked;
+       do not mark intentional alias behavior illegal.
 
 Coverage ID: COV-GPIO-001
 Feature/Requirement: REQ-GPIO-002..REQ-GPIO-005 - output operations
@@ -77,7 +79,7 @@ Coverpoint/Cross: operation x data-pattern category x WSTRB category
 Bins/Intent: LOAD, SET, CLEAR, TOGGLE; each changes and does not change a target
              bit; strobed update and unstrobed preservation
 Goal: 100% of reachable critical bins
-Status: IMPLEMENTED_PARTIAL
+Status: IMPLEMENTED_CLOSED_MATRIX
 Notes: Ignore bit indices outside configured NOUT.
 
 Coverage ID: COV-GPIO-002
@@ -85,7 +87,7 @@ Feature/Requirement: REQ-CDC-001 and REQ-GPIO-008 - GPIO edges/change detection
 Coverpoint/Cross: input edge direction x implemented bit index
 Bins/Intent: rise, fall, single-bit, multi-bit, status-clear, status-already-set
 Goal: 100% of reachable critical bins
-Status: IMPLEMENTED_PARTIAL
+Status: IMPLEMENTED_CLOSED_DEFAULT
 Notes: Ignore input-related bins when NIN=0.
 
 Coverage ID: COV-GPIO-003
@@ -114,17 +116,18 @@ Coverpoint/Cross: reset phase x outstanding channel state
 Bins/Intent: idle, AW pending, W pending, B stalled, AR pending, R stalled;
              first valid post-reset access
 Goal: 100% of planned bins
-Status: CHARACTERIZED_OPEN_SPEC
+Status: IMPLEMENTED_CLOSED_MATRIX
 Notes: Use sampled reset semantics; reset-aborted traffic must not be counted as
-       a normal completed transaction.
+       a normal completed transaction. Controlled slave reset now proves actual
+       write/read highwater 2/2 before reset.
 
 Closure policy
 --------------
 The frozen plan's initial target is at least 95% overall functional coverage
 and 100% on reachable critical register, WSTRB, AW/W-ordering, W1C, and
 interrupt-polarity bins. Any exclusion, unreachable bin, or goal adjustment
-requires review and a recorded rationale. C3.1 provides reproducible actual
-collection and grouping. C3.2 reaches 99.56% on the default GPIO functional
-coverage object while retaining the unreachable zero-cycle response-completion
-bin and documenting partial plan items. C3.3/C3.4 remain open.
+requires review and a recorded rationale. C3.3 reaches 98.73% on the expanded
+default GPIO functional coverage object; the score decreased because new scored
+bins expanded the denominator. The retained zero-cycle response-completion bin,
+SPEC-MASK-001, code-coverage waivers, and final sign-off remain open for C3.4.
 
