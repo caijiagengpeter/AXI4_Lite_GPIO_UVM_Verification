@@ -2,11 +2,11 @@ AXI4-Lite GPIO Functional Coverage Plan
 =======================================
 
 Baseline: docs/verification_plan.txt v1.0, Section 14
-C3.3 state: C3.2 observed-event coverage is extended with operation
-change/no-change, W1C data/strobe/hardware-change, address-alias, real depth-2
-reset, isolated parameter elaborations, and controlled bad-slave detection.
-Measured results are recorded in docs/v4_c3_3_parameter_negative.md; code gaps
-and denominator analysis are in docs/v4_c3_3_code_coverage_gap_analysis.md.
+C3.4 state: C3.3 is frozen at v4.0-c3.3-baseline. Checker-verified alias,
+AWADDR[1], W1C timing and v4 payload tests are added without DUT changes,
+exclusions, deleted bins, or cross-parameter merging. Measured results and the
+draft gap review are in docs/v4_c3_4_coverage_gap_closure.md; machine-readable
+triage is in manifests/c3_4_coverage_gap_triage.json.
 
 Field definitions
 -----------------
@@ -62,6 +62,8 @@ Bins/Intent: single item, multiple queued items, back-to-back/pipelined AW, W,
 Goal: 100% of reachable critical bins
 Status: IMPLEMENTED_CLOSED_STALL_BUCKETS
 Notes: Occupancy is measured from accepted handshakes and ordered queues.
+       The v4 controlled group additionally closes depth/order 10/10 and
+       verified-payload variables/crosses 50/50 and 64/64.
 
 Coverage ID: COV-REG-001
 Feature/Requirement: REQ-GPIO-001 - register map
@@ -96,8 +98,11 @@ Coverpoint/Cross: W1C data x byte strobe x concurrent new change x result
 Bins/Intent: data 0/1, strobe off/on, clear alone, change alone, same-bit
              clear+change with change winning
 Goal: 100% of reachable critical bins
-Status: IMPLEMENTED_CLOSED_DEFAULT
-Notes: Sample the post-update sticky state.
+Status: IMPLEMENTED_BEHAVIOR_CHECKED_CROSS_6_OF_8
+Notes: Sample the post-update sticky state. Variables are 7/7 and the cross is
+       6/8; data=0/1 with strobe-off plus same-window hardware change remains
+       scored and unresolved even though sticky/change-winning behavior is
+       independently scoreboard/SVA checked.
 
 Coverage ID: COV-INT-001
 Feature/Requirement: REQ-INT-001, REQ-INT-002, SPEC-MASK-001
@@ -126,8 +131,20 @@ Closure policy
 The frozen plan's initial target is at least 95% overall functional coverage
 and 100% on reachable critical register, WSTRB, AW/W-ordering, W1C, and
 interrupt-polarity bins. Any exclusion, unreachable bin, or goal adjustment
-requires review and a recorded rationale. C3.3 reaches 98.73% on the expanded
-default GPIO functional coverage object; the score decreased because new scored
-bins expanded the denominator. The retained zero-cycle response-completion bin,
-SPEC-MASK-001, code-coverage waivers, and final sign-off remain open for C3.4.
+requires review and a recorded rationale. C3.4 reaches 99.18% on the expanded
+default GPIO functional coverage object while retaining all bins. The response
+latency immediate bin remains 0-hit and the W1C cross remains 6/8.
+SPEC-MASK-001, code-coverage waiver approval, those timing gaps, and final
+sign-off remain open.
+
+C3.4 code-coverage evidence boundary
+------------------------------------
+The reviewed run has 7/7 builds, 51/51 tests, and 12/12 compatible URG merges
+PASS. Default-DUT axilgpio is 80/82 line, 21/21 condition, 700/940 toggle, and
+55/58 branch. The +2 toggle over C3.3 is the real AWADDR[1] 0->1/1->0 activity.
+Default skid instances retain 38/40, 38/40, and 302/304 toggle bits; LOWPOWER
+and NOUT=32 gaps are covered only in their isolated parameter reports. The
+current-source legacy seven-test group and v4 full suite share exactly the same
+232/103/2870/130 denominators; their top-level results must not be relabelled as
+DUT-only coverage.
 

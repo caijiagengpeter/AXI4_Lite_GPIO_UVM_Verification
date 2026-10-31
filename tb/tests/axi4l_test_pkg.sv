@@ -32,6 +32,7 @@ package axi4l_test_pkg;
   `include "directed/axi4l_gpio_v2_directed_test.sv"
   `include "directed/axi4l_c3_2_coverage_test.sv"
   `include "directed/axi4l_c3_3_parameter_test.sv"
+  `include "directed/axi4l_c3_4_coverage_tests.sv"
   `include "random/axi4l_gpio_v2_random_test.sv"
 endpackage
 

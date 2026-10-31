@@ -348,9 +348,19 @@ def parse_urg_report(report_path: Path) -> dict[str, Any]:
                 result["sva_cover_properties_total"] = int(total.group(1))
             if matches:
                 result["sva_cover_properties_matched"] = int(matches.group(1))
+        # Assertion rows and cover-property rows use different trailing
+        # columns.  In particular, a cover property's INCOMPLETE count occupies
+        # the position used by FAILURES in an assertion row.  Restrict this
+        # aggregation to the assertion detail section so an end-of-simulation
+        # open cover attempt is not misreported as an assertion failure.
+        assertion_detail = re.search(
+            r"Detail Report for Assertions</b>(.*?)"
+            r"Detail Report for Cover Properties</b>", text, re.DOTALL
+        )
+        detail_source = assertion_detail.group(1) if assertion_detail else ""
         detail_rows = re.findall(
             r'<tr class="wht"><td class="lf"><a name="tag_hvp_ast_.*?</tr>',
-            text, re.DOTALL
+            detail_source, re.DOTALL
         )
         attempt_total = 0
         failure_total = 0

@@ -1,0 +1,188 @@
+{
+  "schema_version": "1.0",
+  "phase": "v4.0-C3.4-A",
+  "status": "DRAFT_GAP_REVIEW_NOT_SIGNOFF",
+  "checkpoint": {
+    "baseline_tag": "v4.0-c3.3-baseline",
+    "commit": "3dfdf5e5bbc135eec7204518aaf9098189233b3c",
+    "c3_4_commit_created": false
+  },
+  "evidence": {
+    "root": "sim/c3_4_coverage_closure_reviewed_final",
+    "manifest": "sim/c3_4_coverage_closure_reviewed_final/manifest.json",
+    "overview": "sim/c3_4_coverage_closure_reviewed_final/overview.md",
+    "tool": "VCS/URG V-2023.12-SP1",
+    "builds": {"passed": 7, "total": 7},
+    "runs": {"passed": 51, "total": 51},
+    "merge_groups": {"passed": 12, "total": 12},
+    "uvm_warning_error_fatal": [0, 0, 0],
+    "sva_failures": 0
+  },
+  "scope_metrics": [
+    {
+      "scope": "axilgpio_default_dut_only",
+      "report": "reports/gpio_dut_default/modinfo.txt",
+      "line": [80, 82],
+      "condition": [21, 21],
+      "toggle": [700, 940],
+      "branch": [55, 58]
+    },
+    {
+      "scope": "skidbuffer_default_module",
+      "report": "reports/gpio_dut_default/modinfo.txt",
+      "line": [18, 21],
+      "condition": [11, 14],
+      "branch": [10, 15],
+      "instance_toggle": {
+        "aw_dw3": [38, 40],
+        "ar_dw3": [38, 40],
+        "w_dw36": [302, 304]
+      }
+    },
+    {
+      "scope": "gpio_default_compatible_group",
+      "report": "reports/gpio_dut_default/session.xml",
+      "tests": 17,
+      "line": [189, 232],
+      "condition": [72, 103],
+      "toggle": [1834, 2870],
+      "branch": [99, 130],
+      "functional_percent": 99.1818,
+      "assertion_attempts": 240348,
+      "assertion_failures": 0,
+      "sva_cover_properties": [32, 32]
+    },
+    {
+      "scope": "v4_controlled_slave_compatible_group",
+      "report": "reports/v4_controlled_slave/session.xml",
+      "tests": 5,
+      "line": [169, 232],
+      "condition": [40, 103],
+      "toggle": [365, 2870],
+      "branch": [60, 130],
+      "functional_percent": 100.0,
+      "assertion_attempts": 23913,
+      "assertion_failures": 0
+    },
+    {
+      "scope": "axi4l_v4_test_slave_module_and_v4_axi_if",
+      "report": "reports/v4_controlled_slave/modinfo.txt",
+      "test_slave": {
+        "line": [62, 63],
+        "condition": [35, 40],
+        "toggle": [169, 328],
+        "branch": [22, 23]
+      },
+      "v4_axi_if_toggle": [169, 328]
+    },
+    {
+      "scope": "v4_legacy_current_top",
+      "report": "reports/v4_legacy_current/session.xml",
+      "tests": 7,
+      "score_percent": 76.04,
+      "line": [189, 232],
+      "condition": [68, 103],
+      "toggle": [1733, 2870],
+      "branch": [99, 130]
+    },
+    {
+      "scope": "v4_full_default_top",
+      "report": "reports/v4_full_default/session.xml",
+      "tests": 14,
+      "score_percent": 85.55,
+      "line": [217, 232],
+      "condition": [85, 103],
+      "toggle": [2074, 2870],
+      "branch": [110, 130],
+      "claim_boundary": "top-level TB plus GPIO and v4 infrastructure; not DUT-only"
+    }
+  ],
+  "functional_component_evidence": {
+    "v4_verified_payload": {"variables": [50, 50], "crosses": [64, 64]},
+    "v4_depth_order": {"variables": [10, 10]},
+    "v4_reset_context": {"variables": [8, 8]},
+    "v4_lifecycle": {"variables": [6, 6]},
+    "driver_class_code_coverage": "not reported as an HDL module by this URG build; behavior is evidenced by checked functional bins, logs and response accounting"
+  },
+  "gaps": [
+    {
+      "id": "C3.4-CODE-AWADDR1",
+      "object": "axilgpio.S_AXI_AWADDR[1]",
+      "classification": "reachable_default",
+      "status": "HIT",
+      "test": "axi4l_c3_4_dut_closure_test",
+      "evidence": "axilgpio toggle 698/940 -> 700/940"
+    },
+    {
+      "id": "C3.4-CODE-SKID-STALL",
+      "object": "skidbuffer.v:137 legal input-while-output-stalled path",
+      "classification": "reachable_default",
+      "status": "HIT_RETAINED",
+      "evidence": "line 137 is 1/1 in the default report; C3.4 also observes buffered_side_effect=1 and B/R stalls"
+    },
+    {
+      "id": "C3.4-CODE-LOWPOWER",
+      "object": "axilgpio.v:489,503 and skidbuffer.v:149,151,183",
+      "classification": "parameter_specific",
+      "status": "COVERED_VIA_ISOLATED_PARAMETER_RUN",
+      "evidence_group": "gpio_lowpower1"
+    },
+    {
+      "id": "C3.4-CODE-NOUT32",
+      "object": "axilgpio.v:380 false branch",
+      "classification": "parameter_specific",
+      "status": "COVERED_VIA_ISOLATED_PARAMETER_RUN",
+      "evidence_group": "gpio_nout32"
+    },
+    {
+      "id": "C3.4-CODE-CONSTANT-RESP",
+      "object": "GPIO DUT and controlled-slave BRESP/RRESP non-OKAY bits",
+      "classification": "design_constant",
+      "status": "WAIVER_CANDIDATE_NOT_APPROVED",
+      "rationale": "the implemented legal behavior always returns OKAY; no exclusion was added"
+    },
+    {
+      "id": "C3.4-CODE-PADDING",
+      "object": "NOUT/NIN padding, deterministic read-data constants, high-water upper bits and lint-reduction nets",
+      "classification": "configuration_or_structural_constant",
+      "status": "WAIVER_CANDIDATE_NOT_APPROVED",
+      "rationale": "retain raw scoring until reviewed per bit; do not cross-merge parameter VDBs"
+    },
+    {
+      "id": "C3.4-V4-INVALID-DEPTH",
+      "object": "axi4l_v4_test_slave invalid depth fatal branch",
+      "classification": "negative_configuration",
+      "status": "ISOLATED_NEGATIVE_TEST_CANDIDATE",
+      "rationale": "must not be activated inside a clean regression solely for line coverage"
+    },
+    {
+      "id": "C3.4-FUNC-W1C-OFF-CHANGE",
+      "object": "w1c_matrix data x strobe-off x hardware-changing",
+      "classification": "reachable_timing_cross_under_review",
+      "status": "UNRESOLVED_2_OF_8",
+      "evidence": "variables 7/7; cross 6/8; behavior itself remains scoreboard/SVA checked"
+    },
+    {
+      "id": "C3.4-FUNC-IMMEDIATE",
+      "object": "accepted-to-response latency immediate bin",
+      "classification": "timing_definition_review",
+      "status": "UNRESOLVED_RETAINED",
+      "evidence": "latency variable 4/5; immediate count 0; no ignore/exclusion/delete"
+    },
+    {
+      "id": "SPEC-MASK-001",
+      "object": "MASK polarity",
+      "classification": "specification_conflict",
+      "status": "OPEN",
+      "rationale": "checker models implemented RTL MASK=1-enable behavior; no RTL semantic change authorized"
+    }
+  ],
+  "integrity": {
+    "dut_rtl_modified": false,
+    "coverage_exclusions_added": false,
+    "bins_deleted_or_goals_lowered": false,
+    "parameter_vdbs_cross_merged": false,
+    "remote_git_operation": false,
+    "final_signoff_claimed": false
+  }
+}

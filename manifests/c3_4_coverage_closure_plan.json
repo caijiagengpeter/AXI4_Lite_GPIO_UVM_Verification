@@ -1,0 +1,70 @@
+{
+  "extends": "c3_3_parameter_negative_plan.json",
+  "phase": "AXI4-Lite v4.0-C3.4-A",
+  "description": "Coverage-driven closure for the reachable default GPIO DUT toggle plus checked v4 payload activity and a separate full top-level suite.",
+  "source_inventory": {
+    "c3_4_dut_closure": "Checker-qualified unaligned aliases, alternating AWADDR[1], independent AW/W gaps, non-zero WSTRB output side effects, and B/R/request stalls.",
+    "c3_4_v4_payload": "Controlled-slave response/data/order/depth/stability checks with all address/protection bits and four data/strobe patterns.",
+    "c3_4_v4_full": "A separately named top-level merge containing the legacy seven-test GPIO mix plus lifecycle, controlled-slave, and C3.4 tests; never reported as DUT-only coverage."
+  },
+  "merge_groups": {
+    "v4_legacy_current": {
+      "coverage_object": "tb_top_default_current_legacy7",
+      "coverage_claim": "Current-source reproduction of the historical seven-test mix; comparison denominator for v4_full_default, not a C3.4 closure claim."
+    },
+    "v4_full_default": {
+      "coverage_object": "tb_top_default_gpio_and_v4_full_suite",
+      "coverage_claim": "Top-level TB plus GPIO DUT activity for the combined suite. This score is not a DUT-only claim."
+    }
+  },
+  "report_notes": [
+    "C3.4 default-DUT and v4-controlled groups retain the C3.3 compile signature and denominator for before/after comparison.",
+    "v4_legacy_current and v4_full_default share the exact current source/build signature, enabling an apples-to-apples top-level comparison.",
+    "v4_full_default deliberately executes both axi_if/DUT and v4_axi_if/test-slave traffic under one compatible default build.",
+    "No DUT RTL, coverage exclusions, goals, or bins are changed; response-latency immediate remains scored and uncovered pending timing review.",
+    "SPEC-MASK-001 remains open and the checker continues to model the implemented MASK=1-enable behavior."
+  ],
+  "runs": [
+    {
+      "id": "gpio_c3_4_dut_closure_seed41", "set": "c3_4_delta", "merge_group": "gpio_dut_default",
+      "test_name": "axi4l_c3_4_dut_closure_test", "target": "c3_4_dut_closure", "seed": 41,
+      "execution_target": "Default GPIO DUT RTL", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "gpio_dut_rtl_default", "driver_mode": "limited_overlap_checked",
+      "runtime_parameters": {"address_aliases": [2, 5, 10, 13], "b_stall_cycles": 12, "r_stall_cycles": 12, "nonzero_wstrb_side_effects": true},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": ["[C3_4_DUT_CLOSURE_PASS]", "[SCB_PASS]"]}, "plusargs": []
+    },
+    {
+      "id": "v4_c3_4_payload_seed42", "set": "c3_4_delta", "merge_group": "v4_controlled_slave",
+      "test_name": "axi4l_c3_4_v4_payload_test", "target": "c3_4_v4_payload", "seed": 42,
+      "execution_target": "v4 controlled slave", "build_variant": "tb_top_default", "config": "tb_top_default_elaboration",
+      "coverage_object": "v4_bfm_controlled_slave", "driver_mode": "v4_bounded_pipeline",
+      "runtime_parameters": {"depth": 8, "writes": 32, "reads": 32, "verified_payload_covergroup": true},
+      "expected_outcome": {"kind": "clean_uvm", "required_markers": ["[C3_4_V4_PAYLOAD_PASS]"]},
+      "plusargs": ["+V4_TEST_SLAVE", "+V4_SLAVE_DEPTH=8"]
+    },
+
+    {"id":"full_gpio_smoke_seed101","set":"c3_4_full","merge_group":"v4_full_default","test_name":"axi4l_smoke_test","target":"v4_full","seed":101,"execution_target":"GPIO DUT RTL","build_variant":"tb_top_default","config":"combined_default_top","coverage_object":"tb_top_default_gpio_and_v4_full_suite","driver_mode":"legacy_serial","runtime_parameters":{},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":[]},
+    {"id":"full_gpio_agent_seed102","set":"c3_4_full","merge_group":"v4_full_default","test_name":"gpio_agent_smoke_test","target":"v4_full","seed":102,"execution_target":"GPIO DUT RTL","build_variant":"tb_top_default","config":"combined_default_top","coverage_object":"tb_top_default_gpio_and_v4_full_suite","driver_mode":"legacy_serial","runtime_parameters":{},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":[]},
+    {"id":"full_gpio_v2_directed_seed103","set":"c3_4_full","merge_group":"v4_full_default","test_name":"axi4l_gpio_v2_directed_test","target":"v4_full","seed":103,"execution_target":"GPIO DUT RTL","build_variant":"tb_top_default","config":"combined_default_top","coverage_object":"tb_top_default_gpio_and_v4_full_suite","driver_mode":"legacy_serial","runtime_parameters":{},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":[]},
+    {"id":"full_gpio_v2_random_seed104","set":"c3_4_full","merge_group":"v4_full_default","test_name":"axi4l_gpio_v2_random_test","target":"v4_full","seed":104,"execution_target":"GPIO DUT RTL","build_variant":"tb_top_default","config":"combined_default_top","coverage_object":"tb_top_default_gpio_and_v4_full_suite","driver_mode":"legacy_serial","runtime_parameters":{},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":[]},
+    {"id":"full_gpio_bit34_seed105","set":"c3_4_full","merge_group":"v4_full_default","test_name":"axi4l_gpio_bit34_coverage_test","target":"v4_full","seed":105,"execution_target":"GPIO DUT RTL","build_variant":"tb_top_default","config":"combined_default_top","coverage_object":"tb_top_default_gpio_and_v4_full_suite","driver_mode":"legacy_serial","runtime_parameters":{},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":[]},
+    {"id":"full_gpio_w1c_seed106","set":"c3_4_full","merge_group":"v4_full_default","test_name":"axi4l_gpio_w1c_hw_collision_test","target":"v4_full","seed":106,"execution_target":"GPIO DUT RTL","build_variant":"tb_top_default","config":"combined_default_top","coverage_object":"tb_top_default_gpio_and_v4_full_suite","driver_mode":"legacy_serial","runtime_parameters":{},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":[]},
+    {"id":"full_gpio_request_stall_seed107","set":"c3_4_full","merge_group":"v4_full_default","test_name":"axi4l_request_stall_test","target":"v4_full","seed":107,"execution_target":"GPIO DUT RTL","build_variant":"tb_top_default","config":"combined_default_top","coverage_object":"tb_top_default_gpio_and_v4_full_suite","driver_mode":"limited_overlap","runtime_parameters":{},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":[]},
+    {"id":"full_gpio_c3_4_seed108","set":"c3_4_full","merge_group":"v4_full_default","test_name":"axi4l_c3_4_dut_closure_test","target":"v4_full","seed":108,"execution_target":"GPIO DUT RTL","build_variant":"tb_top_default","config":"combined_default_top","coverage_object":"tb_top_default_gpio_and_v4_full_suite","driver_mode":"limited_overlap_checked","runtime_parameters":{},"expected_outcome":{"kind":"clean_uvm","required_markers":["[C3_4_DUT_CLOSURE_PASS]"]},"plusargs":[]},
+
+    {"id":"full_v4_lifecycle_seed109","set":"c3_4_full","merge_group":"v4_full_default","test_name":"axi4l_v4_lifecycle_unit_test","target":"v4_full","seed":109,"execution_target":"v4 lifecycle component","build_variant":"tb_top_default","config":"combined_default_top","coverage_object":"tb_top_default_gpio_and_v4_full_suite","driver_mode":"component_unit","runtime_parameters":{},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":[]},
+    {"id":"full_v4_pipeline_seed110","set":"c3_4_full","merge_group":"v4_full_default","test_name":"axi4l_v4_channel_pipeline_test","target":"v4_full","seed":110,"execution_target":"v4 controlled slave","build_variant":"tb_top_default","config":"combined_default_top","coverage_object":"tb_top_default_gpio_and_v4_full_suite","driver_mode":"v4_bounded_pipeline","runtime_parameters":{"depth":8},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":["+V4_TEST_SLAVE","+V4_SLAVE_DEPTH=8"]},
+    {"id":"full_v4_order_seed111","set":"c3_4_full","merge_group":"v4_full_default","test_name":"axi4l_v4_response_order_test","target":"v4_full","seed":111,"execution_target":"v4 controlled slave","build_variant":"tb_top_default","config":"combined_default_top","coverage_object":"tb_top_default_gpio_and_v4_full_suite","driver_mode":"v4_bounded_pipeline","runtime_parameters":{"depth":4},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":["+V4_TEST_SLAVE","+V4_SLAVE_DEPTH=4"]},
+    {"id":"full_v4_depth3_seed112","set":"c3_4_full","merge_group":"v4_full_default","test_name":"axi4l_v4_depth3_test","target":"v4_full","seed":112,"execution_target":"v4 controlled slave","build_variant":"tb_top_default","config":"combined_default_top","coverage_object":"tb_top_default_gpio_and_v4_full_suite","driver_mode":"v4_bounded_pipeline","runtime_parameters":{"depth":3},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":["+V4_TEST_SLAVE","+V4_SLAVE_DEPTH=3"]},
+    {"id":"full_v4_reset_seed113","set":"c3_4_full","merge_group":"v4_full_default","test_name":"axi4l_v4_reset_test","target":"v4_full","seed":113,"execution_target":"v4 controlled slave","build_variant":"tb_top_default","config":"combined_default_top","coverage_object":"tb_top_default_gpio_and_v4_full_suite","driver_mode":"v4_bounded_pipeline","runtime_parameters":{"depth":2},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":["+V4_TEST_SLAVE","+V4_SLAVE_DEPTH=2"]},
+    {"id":"full_v4_payload_seed114","set":"c3_4_full","merge_group":"v4_full_default","test_name":"axi4l_c3_4_v4_payload_test","target":"v4_full","seed":114,"execution_target":"v4 controlled slave","build_variant":"tb_top_default","config":"combined_default_top","coverage_object":"tb_top_default_gpio_and_v4_full_suite","driver_mode":"v4_bounded_pipeline","runtime_parameters":{"depth":8,"writes":32,"reads":32},"expected_outcome":{"kind":"clean_uvm","required_markers":["[C3_4_V4_PAYLOAD_PASS]"]},"plusargs":["+V4_TEST_SLAVE","+V4_SLAVE_DEPTH=8"]},
+
+    {"id":"current_legacy_smoke_seed201","set":"c3_4_legacy","merge_group":"v4_legacy_current","test_name":"axi4l_smoke_test","target":"current_legacy7","seed":201,"execution_target":"GPIO DUT RTL","build_variant":"tb_top_default","config":"current_default_legacy7","coverage_object":"tb_top_default_current_legacy7","driver_mode":"legacy_serial","runtime_parameters":{},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":[]},
+    {"id":"current_legacy_gpio_agent_seed202","set":"c3_4_legacy","merge_group":"v4_legacy_current","test_name":"gpio_agent_smoke_test","target":"current_legacy7","seed":202,"execution_target":"GPIO DUT RTL","build_variant":"tb_top_default","config":"current_default_legacy7","coverage_object":"tb_top_default_current_legacy7","driver_mode":"legacy_serial","runtime_parameters":{},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":[]},
+    {"id":"current_legacy_v2_directed_seed203","set":"c3_4_legacy","merge_group":"v4_legacy_current","test_name":"axi4l_gpio_v2_directed_test","target":"current_legacy7","seed":203,"execution_target":"GPIO DUT RTL","build_variant":"tb_top_default","config":"current_default_legacy7","coverage_object":"tb_top_default_current_legacy7","driver_mode":"legacy_serial","runtime_parameters":{},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":[]},
+    {"id":"current_legacy_v2_random_seed204","set":"c3_4_legacy","merge_group":"v4_legacy_current","test_name":"axi4l_gpio_v2_random_test","target":"current_legacy7","seed":204,"execution_target":"GPIO DUT RTL","build_variant":"tb_top_default","config":"current_default_legacy7","coverage_object":"tb_top_default_current_legacy7","driver_mode":"legacy_serial","runtime_parameters":{},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":[]},
+    {"id":"current_legacy_bit34_seed205","set":"c3_4_legacy","merge_group":"v4_legacy_current","test_name":"axi4l_gpio_bit34_coverage_test","target":"current_legacy7","seed":205,"execution_target":"GPIO DUT RTL","build_variant":"tb_top_default","config":"current_default_legacy7","coverage_object":"tb_top_default_current_legacy7","driver_mode":"legacy_serial","runtime_parameters":{},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":[]},
+    {"id":"current_legacy_w1c_seed206","set":"c3_4_legacy","merge_group":"v4_legacy_current","test_name":"axi4l_gpio_w1c_hw_collision_test","target":"current_legacy7","seed":206,"execution_target":"GPIO DUT RTL","build_variant":"tb_top_default","config":"current_default_legacy7","coverage_object":"tb_top_default_current_legacy7","driver_mode":"legacy_serial","runtime_parameters":{},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":[]},
+    {"id":"current_legacy_request_stall_seed207","set":"c3_4_legacy","merge_group":"v4_legacy_current","test_name":"axi4l_request_stall_test","target":"current_legacy7","seed":207,"execution_target":"GPIO DUT RTL","build_variant":"tb_top_default","config":"current_default_legacy7","coverage_object":"tb_top_default_current_legacy7","driver_mode":"limited_overlap","runtime_parameters":{},"expected_outcome":{"kind":"clean_uvm","required_markers":[]},"plusargs":[]}
+  ]
+}

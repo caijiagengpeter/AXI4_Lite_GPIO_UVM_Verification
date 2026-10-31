@@ -13,8 +13,8 @@ The current environment is a strong verification-development milestone, not a fo
 | Reference model | C2 independent cycle model for GPIO output, input synchronization, `CHANGED`, `MASK`, `INT`, and registered `o_int`; expected values never come from DUT internal data |
 | Checking | External AW/W/AR accepted queues, real internal commit/snapshot timing, ordered/qualified responses, pin checking, reset epochs, and orphan/duplicate/missing audits |
 | Assertions | AXI stability/response checks, reset checks, synchronizer checks, interrupt relation, W1C/sticky checks, and activation cover properties |
-| Functional coverage | C3.3 expands C3.2 with operation change/no-change, W1C data/strobe/change, aliases, and real depth-2 reset; expanded default-GPIO object is 98.73% with the retained zero-cycle response bin |
-| Coverage infrastructure | C3.2 checkpoint plus C3.3 overlay manifest: 7 isolated builds, 28 reproducible runs, 10 compatible merge groups, and strict DUT/parameter/component/negative claim separation |
+| Functional coverage | C3.4 keeps every scored bin and raises the expanded default-GPIO object from 98.73% to 99.18%; W1C cross is 6/8 and the zero-cycle response bin remains open |
+| Coverage infrastructure | C3.3 is frozen at `v4.0-c3.3-baseline`; the reviewed C3.4 matrix has 7 isolated builds, 51 reproducible runs, 12 compatible merge groups, and strict DUT/parameter/component/negative claim separation |
 | Pipelining and stress | v4 controlled slave proves write/read depth 3, 4, 8 and reset at actual 2/2; GPIO DUT v3 depth-2/3 stress still observes max 2, and the objects are not merged |
 | RAL | Planned, not implemented |
 | Formal sign-off | Not claimed; the `MASK` polarity conflict and coverage/parameter gaps remain open |
@@ -145,6 +145,8 @@ Digital simulation checks the synchronizer's sampled behavior only. It does not 
 | `axi4l_c2_checker_selftest` | Commit and snapshot orphan/duplicate/missing, stale, and unqualified B/R fault injection without expected-error regression pollution |
 | `axi4l_c3_3_parameter_test` | Isolated NIN/NOUT/skid/low-power/default-output configurations, output change/no-change, zero strobe, and address aliases |
 | `axi4l_bad_slave_selftest` | Eight controlled early/unstable/stale/duplicate/missing protocol faults with self-checked detector sensitivity |
+| `axi4l_c3_4_dut_closure_test` | Checker-verified unaligned aliases, AWADDR[1] toggles, independent AW/W gaps, held VALID, B/R stalls, buffered writes, W1C timing combinations, and alias reads |
+| `axi4l_c3_4_v4_payload_test` | Controlled-slave 5-bit address/data/WSTRB/PROT payload closure with response association, stability, depth-8 and exactly-once checks before coverage sampling |
 
 The mid-reset test covers a partial write, pending B response, pending R response, mixed read/write activity, credit wait, and reset after completed B/R boundaries.
 
@@ -216,6 +218,14 @@ compatible merge groups. Always choose a fresh output directory:
 
     make coverage_c3_3 C3_3_OUT=c3_3_parameter_negative_review
 
+C3.4 adds the two checked directed tests, a current-source legacy seven-test
+control group, and a separate v4 full-suite group. It resolves to 7 builds,
+51 runs, and 12 compatible merge groups. Always choose a fresh output directory:
+
+    make c3_4_dut_closure
+    make c3_4_v4_payload
+    make coverage_c3_4 C3_4_OUT=c3_4_coverage_closure_review
+
 Example with a different VCS installation:
 
 ```bash
@@ -243,6 +253,11 @@ C3.3 writes `sim/c3_3_parameter_negative/` by default. The final recorded
 verification run is `sim/c3_3_parameter_negative_verified_clean/`; it reports
 7/7 builds, 28/28 runs, and 10/10 merges PASS with aggregate UVM W/E/F 0/0/0
 and runtime SVA failures 0; all seven compile logs have zero VCS warnings/errors.
+
+C3.4 writes `sim/c3_4_coverage_closure/` by default. The reviewed evidence is
+`sim/c3_4_coverage_closure_reviewed_final/`; it reports 7/7 builds, 51/51 runs,
+and 12/12 merges PASS, every run exit 0 with UVM W/E/F 0/0/0 and runtime SVA
+failures 0. Generated VDB/log/HTML artifacts remain ignored.
 
 The regression and coverage targets are complementary:
 
@@ -347,16 +362,16 @@ The “v3.2” name is a project milestone used to describe the current stress/r
 ## Known limitations and open issues
 
 1. **`MASK` polarity is unresolved (`SPEC-MASK-001`).** DUT comments describe `1` as masking an interrupt, while the implemented expression is `r_mask & changed`, so `1` behaves as an enable. The scoreboard and SVA intentionally follow the RTL behavior until the design/specification owner resolves the conflict.
-2. **C3.3 functional coverage is not final sign-off.** The expanded default GPIO object is 98.73%; parameter groups are isolated reachability evidence and are not merged to inflate Overall.
+2. **C3.4 functional coverage is not final sign-off.** The expanded default GPIO object is 99.18%; W1C is 6/8 at the data/strobe/hardware-change cross, and parameter groups remain isolated reachability evidence rather than being merged to inflate Overall.
 3. **One GPIO response-latency bin remains uncovered.** Passive accepted-to-completed-response latency cannot be zero in the current registered sampling model. The bin is retained and unexcluded; code coverage also remains below sign-off levels.
 4. **The reviewed C3.3 matrix is finite.** NIN=0, NIN/NOUT=1, NOUT=32, SKID=0, LOWPOWER=1, and a non-zero default value pass, but it is not an exhaustive Cartesian product.
 5. **RAL is not implemented.** The plan describes alias, volatile, and W1C modeling, but `tb/ral/` is currently empty.
 6. **Stress depth 3 is configured but the present DUT run observes a maximum outstanding depth of 2.** This is still useful for credit and backpressure checking, but it is not evidence of three simultaneously accepted requests.
 7. **Black-box fallback is intentionally weaker.** The default C2 path is cycle-exact white-box; `+C2_BLACKBOX` retains end-to-end checks but cannot distinguish acceptance from delayed commit/snapshot under B/R backpressure.
-8. **C3.3 provenance is automated.** The overlay records build signatures, real parameters, test/seed/driver/outcome/log/DB/report and exact exit/UVM/SVA results; mask-policy and waiver closure remain C3.4 work.
+8. **C3.4 provenance is automated.** The overlay records build signatures, real parameters, test/seed/driver/outcome/log/DB/report and exact exit/UVM/SVA results; machine-readable gap triage distinguishes hit, parameter-only, constant-waiver-candidate, and unresolved items.
 9. **Sign-off documents are not closed.** `docs/verification_report.md` remains a template, and plan/traceability statuses have not been updated to match all implemented tests.
 10. **Repository is local-only.** The B2 checkpoint/tag and local history exist, but there is intentionally no remote; generated VCS artifacts remain untracked and no push is performed.
-11. **C3 closure is still not sign-off.** C3.3 adds parameter/bad-slave coverage and proves reset at actual controlled-slave 2/2, but reviewed exclusions/waivers, `SPEC-MASK-001`, and C3.4 sign-off remain open.
+11. **C3 closure is still not sign-off.** C3.4 improves real DUT and v4 infrastructure coverage without exclusions, but waiver approval, retained timing bins, `SPEC-MASK-001`, and the final verification report remain open.
 
 ## Roadmap
 
@@ -385,6 +400,8 @@ The “v3.2” name is a project milestone used to describe the current stress/r
 - `docs/v4_c3_2_functional_coverage.md`: C3.2 observed functional coverage and frozen checkpoint evidence.
 - `docs/v4_c3_3_code_coverage_gap_analysis.md`: v3.2/v4 denominator proof, DUT-only covered/total, uncovered lines/branches/toggles, and C3.4 boundary.
 - `docs/v4_c3_3_parameter_negative.md`: parameter matrix, bad-slave/C2/W1C/reset selftests, final 28-run results, and reproduction.
+- `docs/v4_c3_4_coverage_gap_closure.md`: C3.3 checkpoint, C3.4 tests, exact DUT/TB before-after counts, gap triage, reproduction, and draft sign-off gaps.
+- `manifests/c3_4_coverage_gap_triage.json`: machine-readable hit/parameter/constant/unresolved gap inventory and claim boundaries.
 
 ## Provenance and licensing
 

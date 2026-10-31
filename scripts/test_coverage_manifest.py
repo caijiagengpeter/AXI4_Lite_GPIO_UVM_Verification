@@ -60,6 +60,30 @@ def clean_log(path: Path, extra: str = "") -> None:
 
 
 class CoverageManifestTests(unittest.TestCase):
+    def test_cover_incomplete_is_not_an_assertion_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            report = Path(temp)
+            (report / "asserts.html").write_text(
+                "Summary for Assertions</b><table>"
+                "<tr><td>Total Number</td><td>1</td></tr>"
+                "<tr><td>Failure</td><td>0</td></tr>"
+                "<tr><td>Without Attempts</td><td>0</td></tr></table>"
+                "Summary for Cover Properties</b><table>"
+                "<tr><td>Total Number</td><td>1</td></tr>"
+                "<tr><td>Matches</td><td>1</td></tr></table>"
+                "Detail Report for Assertions</b>"
+                "<tr class=\"wht\"><td class=\"lf\"><a name=\"tag_hvp_ast_a\">a</a></td>"
+                "<td>0</td><td>0</td><td>10</td><td>10</td><td>0</td><td>0</td></tr>"
+                "Detail Report for Cover Properties</b>"
+                "<tr class=\"wht\"><td class=\"lf\"><a name=\"tag_hvp_ast_c\">c</a></td>"
+                "<td>0</td><td>0</td><td>10</td><td>1</td><td>1</td><td>0</td></tr>",
+                encoding="utf-8",
+            )
+            result = cm.parse_urg_report(report)
+            self.assertEqual(result["assertion_attempts"], 10)
+            self.assertEqual(result["assertion_failures"], 0)
+            self.assertEqual(result["sva_cover_properties_matched"], 1)
+
     def test_overlay_plan_appends_runs_without_changing_base(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

@@ -17,6 +17,8 @@ C3_2_PLAN ?= ../manifests/c3_2_coverage_plan.json
 C3_2_OUT  ?= c3_2_coverage
 C3_3_PLAN ?= ../manifests/c3_3_parameter_negative_plan.json
 C3_3_OUT  ?= c3_3_parameter_negative
+C3_4_PLAN ?= ../manifests/c3_4_coverage_closure_plan.json
+C3_4_OUT  ?= c3_4_coverage_closure
 PYTHON   ?= python3.11
 
 .PHONY: all smoke gpio_smoke v2_directed v2_random v3_pipelined v3_mid_reset v3_stress \
@@ -26,6 +28,7 @@ PYTHON   ?= python3.11
 	coverage_v4 coverage_v4_gpio coverage_v4_bfm coverage_v4_checker \
 	c3_2_closure coverage_c3_2 coverage_c3_2_gpio \
 	c3_3_parameter coverage_c3_3 coverage_c3_3_delta \
+	c3_4_dut_closure c3_4_v4_payload coverage_c3_4 coverage_c3_4_delta \
 	coverage_clean compile run clean
 
 all: smoke
@@ -142,6 +145,15 @@ c3_3_parameter: compile
 	./$(SIMV) +UVM_TESTNAME=axi4l_c3_3_parameter_test \
 		+ntb_random_seed=31 +UVM_VERBOSITY=UVM_LOW -l c3_3_parameter.log
 
+c3_4_dut_closure: compile
+	./$(SIMV) +UVM_TESTNAME=axi4l_c3_4_dut_closure_test \
+		+ntb_random_seed=41 +UVM_VERBOSITY=UVM_LOW -l c3_4_dut_closure.log
+
+c3_4_v4_payload: compile
+	./$(SIMV) +UVM_TESTNAME=axi4l_c3_4_v4_payload_test \
+		+V4_TEST_SLAVE +V4_SLAVE_DEPTH=8 \
+		+ntb_random_seed=42 +UVM_VERBOSITY=UVM_LOW -l c3_4_v4_payload.log
+
 coverage: coverage_clean
 	$(VCS) $(VCS_COMMON_OPTS) -cm $(COV_TYPES) -cm_dir coverage.vdb \
 		-o $(COV_SIMV) \
@@ -237,4 +249,15 @@ coverage_c3_3:
 coverage_c3_3_delta:
 	$(PYTHON) ../scripts/coverage_manifest.py run --plan $(C3_3_PLAN) \
 		--output-root $(C3_3_OUT) --sets c3_3
+
+# C3.4 extends the preserved C3.3 plan.  The all target reproduces the
+# apples-to-apples default-DUT and v4-component groups and adds a separate
+# full top-level suite; the delta target is a fast two-test development run.
+coverage_c3_4:
+	$(PYTHON) ../scripts/coverage_manifest.py run --plan $(C3_4_PLAN) \
+		--output-root $(C3_4_OUT) --sets all
+
+coverage_c3_4_delta:
+	$(PYTHON) ../scripts/coverage_manifest.py run --plan $(C3_4_PLAN) \
+		--output-root $(C3_4_OUT) --sets c3_4_delta
 
